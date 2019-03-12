@@ -1,0 +1,18 @@
+CURL_FLAGS=$(shell pkg-config --cflags --libs libcurl)
+JANSSON_FLAGS=$(shell pkg-config --cflags --libs jansson)
+QT_GUI_FLAGS=$(shell pkg-config --cflags --libs gtkmm-3.0)
+
+CC++ =g++
+CPP_OPTION=-Wall -Wextra -Wpedantic -std=gnu++17 -O3 -m64
+
+sudoku : src/main.cpp sudoku.o dancinglinks.o
+	$(CC++) src/main.cpp sudoku.o dancinglinks.o $(CPP_OPTION) $(CURL_FLAGS) $(JANSSON_FLAGS) $(QT_GUI_FLAGS) -o sudoku
+
+sudoku.o : src/sudoku.cpp src/sudoku.h
+	$(CC++) src/sudoku.cpp $(CPP_OPTION) -c
+
+dancinglinks.o: src/dancinglinks.cpp src/dancinglinks.h
+	$(CC++) src/dancinglinks.cpp $(CPP_OPTION) -c
+
+clean :
+	-rm sudoku dancinglinks.o sudoku.o
