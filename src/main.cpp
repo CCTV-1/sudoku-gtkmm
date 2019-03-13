@@ -21,13 +21,13 @@
 
 constexpr SUDOKU_LEVEL NEW_GAME_LEVEL = SUDOKU_LEVEL::MEDIUM;
 
-static const Gdk::RGBA BOARD_BACKGROUD_RBGA( std::string( "rgba( 255 , 255 , 255 , 0.8 )" ) );
-static const Gdk::RGBA PUZZLE_NUMBER_RBGA  ( std::string( "rgba(   0 ,   0 ,   0 , 1.0 )" ) );
-static const Gdk::RGBA SELECT_ROW_RBGA     ( std::string( "rgba( 226 , 231 , 237 , 1.0 )" ) );
-static const Gdk::RGBA SELECT_CELL_RBGA    ( std::string( "rgba( 187 , 222 , 251 , 1.0 )" ) );
-static const Gdk::RGBA SELECT_NUMBER_RBGA  ( std::string( "rgba(   1 ,   2 , 255 , 1.0 )" ) );
+static const Gdk::RGBA BOARD_BACKGROUD_RBGA( Glib::ustring( "rgba( 255 , 255 , 255 , 0.8 )" ) );
+static const Gdk::RGBA PUZZLE_NUMBER_RBGA  ( Glib::ustring( "rgba(   0 ,   0 ,   0 , 1.0 )" ) );
+static const Gdk::RGBA SELECT_ROW_RBGA     ( Glib::ustring( "rgba( 226 , 231 , 237 , 1.0 )" ) );
+static const Gdk::RGBA SELECT_CELL_RBGA    ( Glib::ustring( "rgba( 187 , 222 , 251 , 1.0 )" ) );
+static const Gdk::RGBA SELECT_NUMBER_RBGA  ( Glib::ustring( "rgba(   1 ,   2 , 255 , 1.0 )" ) );
 
-static const Gdk::RGBA BUTTON_BORDER_RGBA  ( std::string( "rgba( 190 , 198 , 212 , 1.0 )" ) );
+static const Gdk::RGBA BUTTON_BORDER_RGBA  ( Glib::ustring( "rgba( 190 , 198 , 212 , 1.0 )" ) );
 
 static inline void set_rgba( const Cairo::RefPtr<Cairo::Context> & cairo_context , const Gdk::RGBA& rgba )
 {
