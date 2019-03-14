@@ -8,6 +8,8 @@
 
 #include <sigc++/sigc++.h>
 
+#include <glibmm/main.h>
+#include <glibmm/timer.h>
 #include <gtkmm/application.h>
 #include <gtkmm/window.h>
 #include <gtkmm/drawingarea.h>
@@ -63,7 +65,9 @@ class SudokuBoard : public Gtk::DrawingArea
             puzzle( game.get_puzzle() ),
             candidates( game.get_candidates() ),
             candidate_font( "Ubuntu Mono 14" ),
-            solutions_font( "Ubuntu Mono 28" )
+            solutions_font( "Ubuntu Mono 28" ),
+            playing( true ),
+            timer()
         {
 
             /*
@@ -108,12 +112,39 @@ class SudokuBoard : public Gtk::DrawingArea
                 this->select_cell = false;
                 this->grid_x = 0;
                 this->grid_y = 0;
+                this->prev_time = 0;
+                this->timer.reset();
+                this->playing = true;
                 this->queue_draw();
             }
             catch( const std::exception& e )
             {
                 g_log( __func__ , G_LOG_LEVEL_MESSAGE , "%s" , e.what() );
             }
+        }
+
+        bool change_play_status( void )
+        {
+            if ( playing == false )
+            {
+                //call start() reset timer,save time
+                this->prev_time += this->timer.elapsed();
+                this->timer.start();
+                this->playing = true;
+            }
+            else
+            {
+                this->timer.stop();
+                this->playing = false;
+            }
+
+            this->queue_draw();
+            return this->playing;
+        }
+
+        std::uint32_t get_play_time( void )
+        {
+            return this->prev_time + this->timer.elapsed();
         }
 
         FillMode change_fill_mode()
@@ -190,6 +221,22 @@ class SudokuBoard : public Gtk::DrawingArea
             this->operator_queues.pop_front();
             this->queue_draw();
         }
+
+        Glib::ustring dump_play_status( void )
+        {
+            std::uint32_t playing_time = this->get_play_time();
+            Glib::ustring status_str;
+
+            status_str += "Puzzle Level:\t\t";
+            status_str += dump_level( this->game.get_puzzle_level() );
+            status_str += "\nPlay Time:\t\t";
+            Glib::ustring time_string( std::to_string( playing_time/3600 ) );
+            time_string += ":" + std::to_string( playing_time/60 );
+            time_string += ":" + std::to_string( playing_time%60 );
+            status_str += time_string;
+
+            return status_str;
+        }
     protected:
         bool on_draw( const Cairo::RefPtr<Cairo::Context> & cairo_context ) override
         {
@@ -202,6 +249,15 @@ class SudokuBoard : public Gtk::DrawingArea
             cairo_context->rectangle( 0 , 0 , this->board_size , this->board_size );
             cairo_context->stroke_preserve();
             cairo_context->fill();
+
+            if ( this->playing == false )
+            {
+                set_rgba( cairo_context , PUZZLE_NUMBER_RBGA );
+                this->layout->set_text( "stop" );
+                cairo_context->move_to( this->board_size/2 , this->board_size/2 );
+                this->layout->show_in_cairo_context( cairo_context );
+                return true;
+            }
 
             constexpr const char * row_indexs[] = 
             {
@@ -375,6 +431,12 @@ class SudokuBoard : public Gtk::DrawingArea
         cell_t grid_x = 0;
         cell_t grid_y = 0;
 
+        bool playing;
+        Glib::Timer timer;
+        //Glib::Timer::stop() -> Glib::Timer::start() reset the timer,not exist Glib::Timer::resume()
+        //save prev timer time to support resume
+        double prev_time = 0;
+
         enum class OperatorType:std::uint32_t
         {
             FILL_PUZZLE = 0,
@@ -491,7 +553,7 @@ bool fill_number( GdkEventButton * event , SudokuBoard& board , cell_t value )
     return true;
 }
 
-bool set_fill_mode( GdkEventButton * event , SudokuBoard& board , ControlButton& button )
+bool change_fill_mode( GdkEventButton * event , SudokuBoard& board , ControlButton& button )
 {
     //ignore double-clicked and three-clicked 
     if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
@@ -550,6 +612,23 @@ bool undo_operator( GdkEventButton * event , SudokuBoard& board )
     return true;
 }
 
+bool change_play_status( GdkEventButton * event , SudokuBoard& board )
+{
+    //ignore double-clicked and three-clicked 
+    if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
+        return true;
+
+    board.change_play_status();
+
+    return true;
+}
+
+bool update_play_status( SudokuBoard& board , ControlButton& button )
+{
+    button.set_label( board.dump_play_status() );
+    return true;
+}
+
 int main( void )
 {
     Sudoku sudoku( NEW_GAME_LEVEL );
@@ -583,23 +662,28 @@ int main( void )
     level_menu.add( popover_grid );
     level_menu.set_relative_to( new_game_button );
     new_game_button.signal_button_press_event().connect( sigc::bind( &open_game_menu , std::ref( level_menu ) ) );
-    main_grid.attach( new_game_button , 12 , 0 , 6 , 3 );
+    main_grid.attach( new_game_button , 12 , 0 , 6 , 2 );
 
     std::array< ControlButton , SUDOKU_SIZE > button_arr;
     for( cell_t i = 0 ; i < SUDOKU_SIZE ; i++ )
     {
         button_arr[i].set_label( std::to_string( i + 1 ) );
         button_arr[i].signal_button_press_event().connect( sigc::bind( &fill_number , std::ref( sudoku_board ) , i + 1 ) );
-        main_grid.attach( button_arr[i] , 12 + i%SUDOKU_BOX_SIZE*2 , 3 + i/SUDOKU_BOX_SIZE*2 , 2 , 2 );
+        main_grid.attach( button_arr[i] , 12 + i%SUDOKU_BOX_SIZE*2 , 2 + i/SUDOKU_BOX_SIZE*2 , 2 , 2 );
     }
 
     ControlButton fill_mode_button( "Fill Mode:Solution" , "Ubuntu Mono 14" );
-    fill_mode_button.signal_button_press_event().connect( sigc::bind( &set_fill_mode , std::ref( sudoku_board ) , std::ref( fill_mode_button ) ) );
-    main_grid.attach( fill_mode_button , 12 , 9 , 3 , 3 );
+    fill_mode_button.signal_button_press_event().connect( sigc::bind( &change_fill_mode , std::ref( sudoku_board ) , std::ref( fill_mode_button ) ) );
+    main_grid.attach( fill_mode_button , 12 , 8 , 3 , 2 );
 
     ControlButton undo_button( "Undo" , "Ubuntu Mono 14" );
     undo_button.signal_button_press_event().connect( sigc::bind( &undo_operator , std::ref( sudoku_board ) ) );
-    main_grid.attach( undo_button , 15 , 9 , 3 , 3 );
+    main_grid.attach( undo_button , 15 , 8 , 3 , 2 );
+
+    ControlButton play_status_button( sudoku_board.dump_play_status() , "Ubuntu Mono 14" );
+    Glib::signal_timeout().connect_seconds( sigc::bind( &update_play_status , std::ref( sudoku_board ) , std::ref( play_status_button ) ) , 1 );
+    play_status_button.signal_button_press_event().connect( sigc::bind( &change_play_status , std::ref( sudoku_board ) ) );
+    main_grid.attach( play_status_button , 12 , 10 , 6 , 2 );
 
     window.add( main_grid );
     window.show_all();
