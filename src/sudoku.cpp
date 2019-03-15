@@ -1,5 +1,6 @@
-#include <cstring>
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
 
 #include <algorithm>
 #include <array>
@@ -86,24 +87,35 @@ static std::size_t get_json_callback( char * content , std::size_t size , std::s
 //not usage solution check
 static bool check_puzzle( const puzzle_t& puzzle , std::size_t x , std::size_t y ) noexcept( false )
 {
+    std::string except_message( __func__ );
+
     if ( puzzle.empty() )
     {
-        throw std::invalid_argument( "puzzle is empty" );
+        except_message += ":puzzle is empty";
+        throw std::invalid_argument( except_message );
     }
     //std::size_t is unsigned interger the value >= 0;
     if ( x > SUDOKU_SIZE )
     {
-        throw std::out_of_range( "standard sudoku size:9x9" );
+        except_message += ":argument x value:" + std::to_string( x );
+        except_message += ",out of range [ 0 , " + std::to_string( SUDOKU_SIZE ) + " ]";
+        throw std::out_of_range( except_message );
     }
     //std::size_t is unsigned interger the value >= 0;
     if ( y > SUDOKU_SIZE )
     {
-        throw std::out_of_range( "standard sudoku size:9x9" );
+        except_message += ":argument y value:" + std::to_string( y );
+        except_message += ",out of range [ 0 , " + std::to_string( SUDOKU_SIZE ) + " ]";
+        throw std::out_of_range( except_message );
     }
-    if ( puzzle[x][y] < 0 || puzzle[x][y] >SUDOKU_SIZE)
+    if ( puzzle[x][y] < 0 || puzzle[x][y] > SUDOKU_SIZE )
     {
-        throw std::out_of_range( "sudoku cell number range:[0,9]" );
+        except_message += ":cell:( " + std::to_string( x );
+        except_message += " , " + std::to_string( y ) + " ) value:" + std::to_string( puzzle[x][y] );
+        except_message += ",out of range [ 0 , " + std::to_string( SUDOKU_SIZE ) + " ]";
+        throw std::out_of_range( except_message );
     }
+
     std::map<cell_t , cell_t> columns_map;
     std::map<cell_t , cell_t> row_map;
     std::map<cell_t , cell_t> box_map;
@@ -133,13 +145,17 @@ static bool check_puzzle( const puzzle_t& puzzle , std::size_t x , std::size_t y
 
 Sudoku::Sudoku( puzzle_t puzzle , SUDOKU_LEVEL level ) noexcept( false )
 {
+    std::string except_message( __func__ );
+
     if ( level >= SUDOKU_LEVEL::_LEVEL_COUNT )
     {
-        throw std::out_of_range( "unknown puzzle level" );
+        except_message += ":unknown puzzle level";
+        throw std::out_of_range( except_message );
     }
     if ( check_puzzle( puzzle ) == false )
     {
-        throw std::invalid_argument( "puzzle illegal" );
+        except_message += ":puzzle illegal";
+        throw std::invalid_argument( except_message );
     }
     this->level = level;
     this->puzzle = puzzle;
@@ -148,15 +164,19 @@ Sudoku::Sudoku( puzzle_t puzzle , SUDOKU_LEVEL level ) noexcept( false )
 
 Sudoku::Sudoku( SUDOKU_LEVEL level ) noexcept( false )
 {
+    std::string except_message( __func__ );
+
     if ( level >= SUDOKU_LEVEL::_LEVEL_COUNT )
     {
-        throw std::out_of_range( "unknown puzzle level" );
+        except_message += ":unknown puzzle level";
+        throw std::out_of_range( except_message );
     }
     this->level = level;
     this->puzzle = get_network_puzzle( level );
-    if ( check_puzzle( this->puzzle ) == false )
+    if ( check_puzzle( puzzle ) == false )
     {
-        throw std::invalid_argument( "puzzle illegal" );
+        except_message += ":puzzle illegal";
+        throw std::invalid_argument( except_message );
     }
     this->candidates = generate_candidates( this->puzzle );
 }
@@ -197,43 +217,58 @@ Sudoku& Sudoku::operator=( Sudoku&& sudoku )
 
 void Sudoku::fill_cell( std::size_t x , std::size_t y , std::size_t value ) noexcept( false )
 {
+    std::string except_message( __func__ );
+
     //std::size_t is unsigned interger the value >= 0;
     if ( x > SUDOKU_SIZE )
     {
-        throw std::out_of_range( "standard sudoku size:9x9" );
+        except_message += ":argument x value:" + std::to_string( x );
+        except_message += ",out of range [ 0 , " + std::to_string( SUDOKU_SIZE ) + " ]";
+        throw std::out_of_range( except_message );
     }
     //std::size_t is unsigned interger the value >= 0;
     if ( y > SUDOKU_SIZE )
     {
-        throw std::out_of_range( "standard sudoku size:9x9" );
+        except_message += ":argument y value:" + std::to_string( y );
+        except_message += ",out of range [ 0 , " + std::to_string( SUDOKU_SIZE ) + " ]";
+        throw std::out_of_range( except_message );
     }
-    //std::size_t is unsigned interger the value >= 0;
-    if ( value >SUDOKU_SIZE)
+    if ( value > SUDOKU_SIZE )
     {
-        throw std::out_of_range( "standard sudoku number range [0,9]" );
+        except_message += ":argument value value:( " + std::to_string( value );
+        except_message += ",out of range [ 0 , " + std::to_string( SUDOKU_SIZE ) + " ]";
+        throw std::out_of_range( except_message );
     }
+
     auto temp = this->puzzle[x][y];
     this->puzzle[x][y] = value;
     if ( check_puzzle( this->puzzle , x , y ) == false )
     {
         //backup puzzle
         this->puzzle[x][y] = temp;
-        throw std::invalid_argument( "puzzle illegal" );
+        except_message += ":puzzle illegal";
+        throw std::invalid_argument( except_message );
     }
     //update_candidates( this->candidates , this->puzzle , x , y );
 }
 
 void Sudoku::erase_cell( std::size_t x , std::size_t y ) noexcept( false )
 {
+    std::string except_message( __func__ );
+
     //std::size_t is unsigned interger the value >= 0;
     if ( x > SUDOKU_SIZE )
     {
-        throw std::out_of_range( "standard sudoku size:9x9" );
+        except_message += ":argument x value:" + std::to_string( x );
+        except_message += ",out of range [ 0 , " + std::to_string( SUDOKU_SIZE ) + " ]";
+        throw std::out_of_range( except_message );
     }
     //std::size_t is unsigned interger the value >= 0;
     if ( y > SUDOKU_SIZE )
     {
-        throw std::out_of_range( "standard sudoku size:9x9" );
+        except_message += ":argument y value:" + std::to_string( y );
+        except_message += ",out of range [ 0 , " + std::to_string( SUDOKU_SIZE ) + " ]";
+        throw std::out_of_range( except_message );
     }
 
     this->puzzle[x][y] = 0;
@@ -241,15 +276,21 @@ void Sudoku::erase_cell( std::size_t x , std::size_t y ) noexcept( false )
 
 void Sudoku::fill_candidates( std::size_t x , std::size_t y , std::vector<cell_t> candidates ) noexcept( false )
 {
+    std::string except_message( __func__ );
+
     //std::size_t is unsigned interger the value >= 0;
     if ( x > SUDOKU_SIZE )
     {
-        throw std::out_of_range( "standard sudoku size:9x9" );
+        except_message += ":argument x value:" + std::to_string( x );
+        except_message += ",out of range [ 0 , " + std::to_string( SUDOKU_SIZE ) + " ]";
+        throw std::out_of_range( except_message );
     }
     //std::size_t is unsigned interger the value >= 0;
     if ( y > SUDOKU_SIZE )
     {
-        throw std::out_of_range( "standard sudoku size:9x9" );
+        except_message += ":argument y value:" + std::to_string( y );
+        except_message += ",out of range [ 0 , " + std::to_string( SUDOKU_SIZE ) + " ]";
+        throw std::out_of_range( except_message );
     }
     if ( candidates.empty() )
         return ;
@@ -269,15 +310,21 @@ void Sudoku::fill_candidates( std::size_t x , std::size_t y , std::vector<cell_t
 
 void Sudoku::erase_candidates( std::size_t x , std::size_t y , std::vector<cell_t> candidates ) noexcept( false )
 {
+    std::string except_message( __func__ );
+
     //std::size_t is unsigned interger the value >= 0;
     if ( x > SUDOKU_SIZE )
     {
-        throw std::out_of_range( "standard sudoku size:9x9" );
+        except_message += ":argument x value:" + std::to_string( x );
+        except_message += ",out of range [ 0 , " + std::to_string( SUDOKU_SIZE ) + " ]";
+        throw std::out_of_range( except_message );
     }
     //std::size_t is unsigned interger the value >= 0;
     if ( y > SUDOKU_SIZE )
     {
-        throw std::out_of_range( "standard sudoku size:9x9" );
+        except_message += ":argument y value:" + std::to_string( y );
+        except_message += ",out of range [ 0 , " + std::to_string( SUDOKU_SIZE ) + " ]";
+        throw std::out_of_range( except_message );
     }
     if ( candidates.empty() )
         return ;
@@ -428,9 +475,12 @@ const puzzle_t& Sudoku::get_puzzle( void ) const noexcept( true )
 
 std::string dump_level( SUDOKU_LEVEL level ) noexcept( false )
 {
+    std::string except_message( __func__ );
+
     if ( level >= SUDOKU_LEVEL::_LEVEL_COUNT )
     {
-        throw std::out_of_range( "unknown puzzle level" );
+        except_message += ":unknown puzzle level";
+        throw std::out_of_range( except_message );
     }
 
     std::string result;
@@ -457,10 +507,14 @@ std::string dump_level( SUDOKU_LEVEL level ) noexcept( false )
 
 bool check_puzzle( const puzzle_t& puzzle ) noexcept( false )
 {
+    std::string except_message( __func__ );
+
     if ( puzzle.empty() )
     {
-        throw std::invalid_argument( "puzzle is empty" );
+        except_message += ":puzzle is empty";
+        throw std::invalid_argument( except_message );
     }
+
     std::array< std::map< cell_t , cell_t > , SUDOKU_SIZE > columns_map;
     std::array< std::map< cell_t , cell_t > , SUDOKU_SIZE > row_map;
     std::array< std::map< cell_t , cell_t > , SUDOKU_SIZE > box_map;
@@ -469,9 +523,12 @@ bool check_puzzle( const puzzle_t& puzzle ) noexcept( false )
         for ( cell_t j = 0 ; j < SUDOKU_SIZE ; j++ )
         {
             int8_t number = puzzle[i][j];
-            if ( number < 0 || number >SUDOKU_SIZE)
+            if ( number < 0 || number > SUDOKU_SIZE )
             {
-                throw std::out_of_range( "sudoku cell number range:[0,9]" );
+                except_message += ":cell:( " + std::to_string( i );
+                except_message += " , " + std::to_string( j ) + " ) value:" + std::to_string( number );
+                except_message += ",out of range [ 0 , " + std::to_string( SUDOKU_SIZE ) + " ]";
+                throw std::out_of_range( except_message );
             }
             cell_t box_index = ( i/SUDOKU_BOX_SIZE )*SUDOKU_BOX_SIZE + j/SUDOKU_BOX_SIZE;
             if ( number == 0 )
@@ -491,9 +548,12 @@ bool check_puzzle( const puzzle_t& puzzle ) noexcept( false )
 std::string dump_puzzle( const puzzle_t& puzzle ) noexcept( false )
 {
     std::string result;
+    std::string except_message( __func__ );
+    
     if ( check_puzzle( puzzle ) == false )
     {
-        throw std::invalid_argument( "illegal puzzle,not support dump to string" );
+        except_message += "illegal puzzle,can't dump to string";
+        throw std::invalid_argument( except_message );
     }
     for( cell_t i = 0 ; i < SUDOKU_SIZE ; i++ )
     {
@@ -509,6 +569,8 @@ std::string dump_puzzle( const puzzle_t& puzzle ) noexcept( false )
 
 puzzle_t get_network_puzzle( SUDOKU_LEVEL level ) noexcept( false )
 {
+    std::string except_message( __func__ );
+
     //API:https://sudoku.com/api/getLevel/$(Level)
     std::string api_url( "https://sudoku.com/api/getLevel/" + dump_level( level ) );
 
@@ -520,7 +582,8 @@ puzzle_t get_network_puzzle( SUDOKU_LEVEL level ) noexcept( false )
     std::shared_ptr<CURL> curl_handle( curl_easy_init() , curl_easy_cleanup );
     if ( curl_handle.get() == nullptr )
     {
-        throw std::runtime_error( "libcurl easy initial failure" );
+        except_message += ":libcurl easy initial failure";
+        throw std::runtime_error( except_message );
     }
     do
     {
@@ -537,7 +600,11 @@ puzzle_t get_network_puzzle( SUDOKU_LEVEL level ) noexcept( false )
         if ( res != CURLE_OK )
         {
             if ( re_try == 0 )
-                break;
+            {
+                except_message += ":get network puzzle failure,libcurl error message:";
+                except_message += error_buff;
+                throw std::runtime_error( except_message );
+            }
             default_timeout += 10L;
             re_try--;
         }
@@ -548,7 +615,10 @@ puzzle_t get_network_puzzle( SUDOKU_LEVEL level ) noexcept( false )
     std::shared_ptr<json_t> root( json_loads( json_buff , 0 , &error ) , json_decref );
     if ( root.get() == nullptr )
     {
-        throw std::invalid_argument( "newtwork json format failure" );
+        except_message += "newtwork json:'";
+        except_message += json_buff;
+        except_message += "' format does not meet expectations";
+        throw std::invalid_argument( except_message );
     }
     //{
     //    "answer": "success",
@@ -564,17 +634,28 @@ puzzle_t get_network_puzzle( SUDOKU_LEVEL level ) noexcept( false )
     json_t * desc_array = json_object_get( root.get() , "desc" );
     if ( json_is_array( desc_array ) == false )
     {
-        throw std::invalid_argument( "newtwork json don't exist puzzle" );
+        except_message += "newtwork json:'";
+        std::shared_ptr<char> jsons( json_dumps( desc_array , JSON_INDENT( 4 ) ) , free );
+        except_message += jsons.get();
+        except_message += "' don't exist puzzle";
+        throw std::invalid_argument( except_message );
     }
     json_t * puzzle_node = json_array_get( desc_array , 0 );
     if ( json_is_string( puzzle_node )  == false )
     {
-        throw std::invalid_argument( "newtwork json format failure" );
+        except_message += "newtwork json:'";
+        std::shared_ptr<char> jsons( json_dumps( puzzle_node , JSON_INDENT( 4 ) ) , free );
+        except_message += jsons.get();
+        except_message += "' don't exist puzzle";
+        throw std::invalid_argument( except_message );
     }
     const char * puzzle_str = json_string_value( puzzle_node );
     if ( strnlen( puzzle_str , SUDOKU_SIZE*SUDOKU_SIZE*2 ) != SUDOKU_SIZE*SUDOKU_SIZE )
     {
-        throw std::length_error( "newtwork puzzle size failure" );
+        except_message += "puzzle:'";
+        except_message += puzzle_str;
+        except_message += "'  size failure";
+        throw std::length_error( except_message );
     }
     
     puzzle_t result;
@@ -641,27 +722,36 @@ std::string dump_candidates( const candidate_t& candidates ) noexcept( true )
 //modify puzzle (x,y) to value update candidate map 
 void update_candidates( candidate_t& candidates , const puzzle_t& puzzle , std::size_t x , std::size_t y ) noexcept( false )
 {
+    std::string except_message( __func__ );
+
     if ( check_puzzle( puzzle ) == false )
     {
-        throw std::invalid_argument( "puzzle illegal" );
+        except_message += "puzzle illegal";
+        throw std::invalid_argument( except_message );
     }
     //std::size_t is unsigned interger the value >= 0;
     if ( x > SUDOKU_SIZE )
     {
-        throw std::out_of_range( "standard sudoku size:9x9" );
+        except_message += ":argument x value:" + std::to_string( x );
+        except_message += ",out of range [ 0 , " + std::to_string( SUDOKU_SIZE ) + " ]";
+        throw std::out_of_range( except_message );
     }
     //std::size_t is unsigned interger the value >= 0;
     if ( y > SUDOKU_SIZE )
     {
-        throw std::out_of_range( "standard sudoku size:9x9" );
+        except_message += ":argument y value:" + std::to_string( y );
+        except_message += ",out of range [ 0 , " + std::to_string( SUDOKU_SIZE ) + " ]";
+        throw std::out_of_range( except_message );
     }
+
+
     cell_t number = puzzle[x][y];
     auto remove_condidate = [ &number ]( decltype( candidates[0][0] ) condidates ) -> void 
     {
-        auto condidate_iteration = std::find( condidates.begin() , condidates.end() , number );
-        if ( condidate_iteration != condidates.end() )
+        auto condidate_iterator = std::find( condidates.begin() , condidates.end() , number );
+        if ( condidate_iterator != condidates.end() )
         {
-            condidates.erase( condidate_iteration );
+            condidates.erase( condidate_iterator );
         } 
     };
     for ( cell_t i = 0 ; i < SUDOKU_SIZE ; i++ )
@@ -674,9 +764,12 @@ void update_candidates( candidate_t& candidates , const puzzle_t& puzzle , std::
 
 candidate_t generate_candidates( const puzzle_t& puzzle ) noexcept( false )
 {
+    std::string except_message( __func__ );
+
     if ( check_puzzle( puzzle ) == false )
     {
-        throw std::invalid_argument( "puzzle illegal" );
+        except_message += "puzzle illegal";
+        throw std::invalid_argument( except_message );
     }
     //if SUDOKU_SIZE == 9 : 0 - SUDOKU_SIZE element , 0X(ignore bit)111111111 disallow [1-9]
     std::array< std::uint64_t , SUDOKU_SIZE > disallow_columns;
