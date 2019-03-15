@@ -23,11 +23,12 @@
 
 constexpr SUDOKU_LEVEL NEW_GAME_LEVEL = SUDOKU_LEVEL::MEDIUM;
 
-static const Gdk::RGBA BOARD_BACKGROUD_RBGA( Glib::ustring( "rgba( 255 , 255 , 255 , 0.8 )" ) );
-static const Gdk::RGBA PUZZLE_NUMBER_RBGA  ( Glib::ustring( "rgba(   0 ,   0 ,   0 , 1.0 )" ) );
-static const Gdk::RGBA SELECT_ROW_RBGA     ( Glib::ustring( "rgba( 226 , 231 , 237 , 1.0 )" ) );
-static const Gdk::RGBA SELECT_CELL_RBGA    ( Glib::ustring( "rgba( 187 , 222 , 251 , 1.0 )" ) );
-static const Gdk::RGBA SELECT_NUMBER_RBGA  ( Glib::ustring( "rgba(   1 ,   2 , 255 , 1.0 )" ) );
+static const Gdk::RGBA BOARD_BACKGROUD_RGBA( Glib::ustring( "rgba( 255 , 255 , 255 , 0.8 )" ) );
+static const Gdk::RGBA PUZZLE_NUMBER_RGBA  ( Glib::ustring( "rgba(   0 ,   0 ,   0 , 1.0 )" ) );
+static const Gdk::RGBA ANSWER_NUMBER_RGBA  ( Glib::ustring( "rgba(  74 , 144 , 226 , 1.0 )" ) );
+static const Gdk::RGBA SELECT_ROW_RGBA     ( Glib::ustring( "rgba( 226 , 231 , 237 , 1.0 )" ) );
+static const Gdk::RGBA SELECT_CELL_RGBA    ( Glib::ustring( "rgba( 187 , 222 , 251 , 1.0 )" ) );
+static const Gdk::RGBA SELECT_NUMBER_RGBA  ( Glib::ustring( "rgba(   1 ,   2 , 255 , 1.0 )" ) );
 
 static const Gdk::RGBA BUTTON_BORDER_RGBA  ( Glib::ustring( "rgba( 190 , 198 , 212 , 1.0 )" ) );
 
@@ -56,7 +57,7 @@ class SudokuBoard : public Gtk::DrawingArea
     public:
         enum class FillMode:std::uint32_t
         {
-            FILL_SOLUTION = 0,
+            FILL_ANSWER = 0,
             FILL_CANDIDATE
         };
 
@@ -149,13 +150,13 @@ class SudokuBoard : public Gtk::DrawingArea
 
         FillMode change_fill_mode()
         {
-            if ( this->fill_mode == FillMode::FILL_SOLUTION )
+            if ( this->fill_mode == FillMode::FILL_ANSWER )
             {
                 this->fill_mode = FillMode::FILL_CANDIDATE;
             }
             else
             {
-                this->fill_mode = FillMode::FILL_SOLUTION;
+                this->fill_mode = FillMode::FILL_ANSWER;
             }
 
             return this->fill_mode;
@@ -166,12 +167,21 @@ class SudokuBoard : public Gtk::DrawingArea
             if ( this->select_cell == false )
                 return ;
 
-            if ( this->fill_mode == FillMode::FILL_SOLUTION )
+            if ( this->fill_mode == FillMode::FILL_ANSWER )
             {
                 try
                 {
-                    this->game.fill_cell( this->grid_x , this->grid_y , value );
-                    this->operator_queues.push_front( { OperatorType::FILL_PUZZLE , { this->grid_x , this->grid_y , value } } );
+                    cell_t old_value = this->puzzle[this->grid_x][this->grid_y];
+                    if ( value == old_value )
+                    {
+                        this->game.erase_answer( this->grid_x , this->grid_y );
+                        this->operator_queues.push_front( { OperatorType::ERASE_ANSWER , { this->grid_x , this->grid_y , value } } );
+                    }
+                    else
+                    {
+                        this->game.fill_answer( this->grid_x , this->grid_y , value );
+                        this->operator_queues.push_front( { OperatorType::FILL_ANSWER , { this->grid_x , this->grid_y , old_value } } );
+                    }
                 }
                 catch( const std::exception& e )
                 {
@@ -203,14 +213,19 @@ class SudokuBoard : public Gtk::DrawingArea
             auto operator_queue = this->operator_queues.front();
             switch ( operator_queue.first )
             {
-                case OperatorType::FILL_PUZZLE:
-                    this->game.erase_cell( operator_queue.second.x , operator_queue.second.y );
+                case OperatorType::FILL_ANSWER:
+                {
+                    if ( operator_queue.second.value != 0 )
+                        this->game.fill_answer( operator_queue.second.x , operator_queue.second.y , operator_queue.second.value );
+                    else
+                        this->game.erase_answer( operator_queue.second.x , operator_queue.second.y );
                     break;
+                }
                 case OperatorType::FILL_CANDIDATE:
                     this->game.erase_candidates( operator_queue.second.x , operator_queue.second.y , { operator_queue.second.value } );
                     break;
-                case OperatorType::ERASE_PUZZLE:
-                    this->game.fill_cell( operator_queue.second.x , operator_queue.second.y , operator_queue.second.value );
+                case OperatorType::ERASE_ANSWER:
+                    this->game.fill_answer( operator_queue.second.x , operator_queue.second.y , operator_queue.second.value );
                     break;
                 case OperatorType::ERASE_CANDIDATE:
                     this->game.fill_candidates( operator_queue.second.x , operator_queue.second.y , { operator_queue.second.value } );
@@ -245,17 +260,18 @@ class SudokuBoard : public Gtk::DrawingArea
 
             //draw background color
             //cairo_context->set_source_rgba( 1.0 , 1.0 , 1.0 , 0.8 );
-            set_rgba( cairo_context , BOARD_BACKGROUD_RBGA );
+            set_rgba( cairo_context , BOARD_BACKGROUD_RGBA );
             cairo_context->rectangle( 0 , 0 , this->board_size , this->board_size );
             cairo_context->stroke_preserve();
             cairo_context->fill();
 
             if ( this->playing == false )
             {
-                set_rgba( cairo_context , PUZZLE_NUMBER_RBGA );
+                set_rgba( cairo_context , PUZZLE_NUMBER_RGBA );
                 this->layout->set_text( "stop" );
                 cairo_context->move_to( this->board_size/2 , this->board_size/2 );
                 this->layout->show_in_cairo_context( cairo_context );
+                cairo_context->restore();
                 return true;
             }
 
@@ -269,7 +285,7 @@ class SudokuBoard : public Gtk::DrawingArea
             };
 
             //draw index
-            set_rgba( cairo_context , PUZZLE_NUMBER_RBGA );
+            set_rgba( cairo_context , PUZZLE_NUMBER_RGBA );
             for( cell_t i = 0 ; i < SUDOKU_SIZE ; i++ )
             {
                 this->layout->set_text( row_indexs[i] );
@@ -280,7 +296,7 @@ class SudokuBoard : public Gtk::DrawingArea
                 this->layout->show_in_cairo_context( cairo_context );
             }
 
-            set_rgba( cairo_context , PUZZLE_NUMBER_RBGA );
+            set_rgba( cairo_context , PUZZLE_NUMBER_RGBA );
             cairo_context->set_line_width( this->line_size );
             //draw board box
             cairo_context->rectangle( this->row_index_size , this->column_index_size , SUDOKU_SIZE*( this->grid_size ) , SUDOKU_SIZE*( this->grid_size ) );
@@ -293,7 +309,7 @@ class SudokuBoard : public Gtk::DrawingArea
                 cell_t row_id = this->grid_y;
                 cell_t box_id = ( this->grid_x/SUDOKU_BOX_SIZE )*SUDOKU_BOX_SIZE + this->grid_y/SUDOKU_BOX_SIZE;
 
-                set_rgba( cairo_context , SELECT_ROW_RBGA );
+                set_rgba( cairo_context , SELECT_ROW_RGBA );
                 cairo_context->rectangle( this->row_index_size + this->line_size + row_id*( this->grid_size ) , this->column_index_size + this->line_size , 
                                 ( this->grid_size ) - this->line_size , SUDOKU_SIZE*( this->grid_size ) - 2*this->line_size );
                 cairo_context->stroke_preserve();
@@ -310,7 +326,7 @@ class SudokuBoard : public Gtk::DrawingArea
                 cairo_context->stroke_preserve();
                 cairo_context->fill();
 
-                set_rgba( cairo_context , SELECT_CELL_RBGA );
+                set_rgba( cairo_context , SELECT_CELL_RGBA );
                 cairo_context->rectangle( this->column_index_size + this->line_size + row_id*( this->grid_size ) , 
                                     this->row_index_size + this->line_size + column_id*( this->grid_size ) ,
                                     ( this->grid_size ) - 2*this->line_size , ( this->grid_size ) - 2*this->line_size );
@@ -319,7 +335,7 @@ class SudokuBoard : public Gtk::DrawingArea
             }
 
             //draw board line
-            set_rgba( cairo_context , PUZZLE_NUMBER_RBGA );
+            set_rgba( cairo_context , PUZZLE_NUMBER_RGBA );
             for ( cell_t i = 1 ; i < SUDOKU_SIZE ; i++ )
             {
                 if ( i%SUDOKU_BOX_SIZE == 0 )
@@ -348,11 +364,15 @@ class SudokuBoard : public Gtk::DrawingArea
                     {
                         if ( this->select_cell && number == this->puzzle[this->grid_x][this->grid_y] )
                         {
-                            set_rgba( cairo_context , SELECT_NUMBER_RBGA );
+                            set_rgba( cairo_context , SELECT_NUMBER_RGBA );
+                        }
+                        else if ( this->game.is_answer( i , j ) )
+                        {
+                            set_rgba( cairo_context , ANSWER_NUMBER_RGBA );
                         }
                         else
                         {
-                            set_rgba( cairo_context , PUZZLE_NUMBER_RBGA );
+                            set_rgba( cairo_context , PUZZLE_NUMBER_RGBA );
                         }
                         this->layout->set_text( std::to_string( number ) );
                         cairo_context->move_to( this->row_index_size + j*( this->grid_size ) + ( this->grid_size )/2 - size/2
@@ -363,7 +383,7 @@ class SudokuBoard : public Gtk::DrawingArea
             }
 
             //draw candiates
-            set_rgba( cairo_context , PUZZLE_NUMBER_RBGA );
+            set_rgba( cairo_context , PUZZLE_NUMBER_RGBA );
             this->layout->set_font_description( candidate_font );
             for ( cell_t i = 0 ; i < SUDOKU_SIZE ; i++ )
             {
@@ -426,7 +446,7 @@ class SudokuBoard : public Gtk::DrawingArea
         std::size_t board_size;
 
         //game status
-        FillMode fill_mode = FillMode::FILL_SOLUTION;
+        FillMode fill_mode = FillMode::FILL_ANSWER;
         bool select_cell = false;
         cell_t grid_x = 0;
         cell_t grid_y = 0;
@@ -439,9 +459,9 @@ class SudokuBoard : public Gtk::DrawingArea
 
         enum class OperatorType:std::uint32_t
         {
-            FILL_PUZZLE = 0,
+            FILL_ANSWER = 0,
             FILL_CANDIDATE,
-            ERASE_PUZZLE,
+            ERASE_ANSWER,
             ERASE_CANDIDATE
         };
         struct OperatorValue
@@ -497,9 +517,9 @@ class ControlButton : public Gtk::EventBox
 
             //draw background color
             if ( pointer_enters )
-                set_rgba( cairo_context , SELECT_NUMBER_RBGA );
+                set_rgba( cairo_context , SELECT_NUMBER_RGBA );
             else
-                set_rgba( cairo_context , BOARD_BACKGROUD_RBGA );
+                set_rgba( cairo_context , BOARD_BACKGROUD_RGBA );
             cairo_context->rectangle( 0 , 0 , this->get_allocated_width() , this->get_allocated_height() );
             cairo_context->stroke_preserve();
             cairo_context->fill();
@@ -509,7 +529,7 @@ class ControlButton : public Gtk::EventBox
             cairo_context->stroke();
             cairo_context->fill();
 
-            set_rgba( cairo_context , PUZZLE_NUMBER_RBGA );
+            set_rgba( cairo_context , PUZZLE_NUMBER_RGBA );
             this->layout->set_text( this->label );
             int layout_width = 0 , layout_height = 0;
             this->layout->get_pixel_size( layout_width , layout_height );
@@ -563,8 +583,8 @@ bool change_fill_mode( GdkEventButton * event , SudokuBoard& board , ControlButt
 
     switch ( new_mode )
     {
-        case SudokuBoard::FillMode::FILL_SOLUTION:
-            button.set_label( "Fill Mode:Solution" );
+        case SudokuBoard::FillMode::FILL_ANSWER:
+            button.set_label( "Fill Mode:Answer" );
             break;
         case SudokuBoard::FillMode::FILL_CANDIDATE:
             button.set_label( "Fill Mode:Candidate" );
@@ -576,14 +596,14 @@ bool change_fill_mode( GdkEventButton * event , SudokuBoard& board , ControlButt
     return true;
 }
 
-bool new_game( GdkEventButton * event , SudokuBoard& board , SUDOKU_LEVEL level )
+bool new_game( GdkEventButton * event , Gtk::Popover& level_menu , SudokuBoard& board , SUDOKU_LEVEL level )
 {
     //ignore double-clicked and three-clicked 
     if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
         return true;
 
+    level_menu.popdown();
     board.new_game( level );
-
     return true;
 }
 
@@ -644,6 +664,7 @@ int main( void )
     SudokuBoard sudoku_board( std::ref( sudoku ) );
     main_grid.attach( sudoku_board , 0 , 0 , 12 , 12 );
 
+    Gtk::Popover level_menu;
     Gtk::Grid popover_grid;
     popover_grid.set_row_homogeneous();
     popover_grid.set_column_homogeneous( true );
@@ -652,13 +673,13 @@ int main( void )
     {
         level_button_arr[i].set_label( dump_level( static_cast<SUDOKU_LEVEL>( i ) ) );
         level_button_arr[i].set_font( "Ubuntu Mono 14" );
-        level_button_arr[i].signal_button_press_event().connect( sigc::bind( &new_game , std::ref( sudoku_board ) , static_cast<SUDOKU_LEVEL>( i )  ) );
+        level_button_arr[i].signal_button_press_event().
+            connect( sigc::bind( &new_game , std::ref( level_menu ) , std::ref( sudoku_board ) , static_cast<SUDOKU_LEVEL>( i )  ) );
         popover_grid.attach( level_button_arr[i] , 0 , i );
     }
     popover_grid.show_all();
 
     ControlButton new_game_button( "New Game" , "Ubuntu Mono 28" );
-    Gtk::Popover level_menu;
     level_menu.add( popover_grid );
     level_menu.set_relative_to( new_game_button );
     new_game_button.signal_button_press_event().connect( sigc::bind( &open_game_menu , std::ref( level_menu ) ) );
@@ -672,7 +693,7 @@ int main( void )
         main_grid.attach( button_arr[i] , 12 + i%SUDOKU_BOX_SIZE*2 , 2 + i/SUDOKU_BOX_SIZE*2 , 2 , 2 );
     }
 
-    ControlButton fill_mode_button( "Fill Mode:Solution" , "Ubuntu Mono 14" );
+    ControlButton fill_mode_button( "Fill Mode:Answer" , "Ubuntu Mono 14" );
     fill_mode_button.signal_button_press_event().connect( sigc::bind( &change_fill_mode , std::ref( sudoku_board ) , std::ref( fill_mode_button ) ) );
     main_grid.attach( fill_mode_button , 12 , 8 , 3 , 2 );
 

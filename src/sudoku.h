@@ -11,7 +11,9 @@
 typedef std::uint8_t cell_t;
 static constexpr cell_t SUDOKU_SIZE = 9;
 static constexpr cell_t SUDOKU_BOX_SIZE = 3;
+typedef std::pair<cell_t , cell_t> postion_t;
 typedef std::array< std::array< int8_t , SUDOKU_SIZE > , SUDOKU_SIZE > puzzle_t;
+typedef std::vector<postion_t> answer_t;
 typedef std::array< std::array< std::vector< cell_t > , SUDOKU_SIZE > , SUDOKU_SIZE > candidate_t;
 
 enum class SUDOKU_LEVEL:std::uint8_t
@@ -35,13 +37,15 @@ class Sudoku
         Sudoku& operator=( Sudoku&& sudoku );
         ~Sudoku() = default;
 
-        void fill_cell( std::size_t x , std::size_t y , std::size_t value ) noexcept( false );
+        void fill_answer( std::size_t x , std::size_t y , std::size_t value ) noexcept( false );
 
-        void erase_cell( std::size_t x , std::size_t y ) noexcept( false );
+        void erase_answer( std::size_t x , std::size_t y ) noexcept( false );
 
         void fill_candidates( std::size_t x , std::size_t y , std::vector<cell_t> candidates ) noexcept( false );
 
         void erase_candidates( std::size_t x , std::size_t y , std::vector<cell_t> candidates ) noexcept( false );
+
+        bool is_answer( std::size_t x , std::size_t y ) noexcept( false );
 
         SUDOKU_LEVEL get_puzzle_level( void ) const noexcept( true );
 
@@ -54,11 +58,14 @@ class Sudoku
     private:
         SUDOKU_LEVEL level;
         puzzle_t puzzle;
+        answer_t answer;
         candidate_t candidates;
         //std::vector<puzzle_t> solution;
 };
 
 std::string dump_level( SUDOKU_LEVEL level ) noexcept( false );
+
+bool fill_check( const puzzle_t& puzzle , std::size_t x , std::size_t y ) noexcept( false );
 
 //not usage solution check
 bool check_puzzle( const puzzle_t& puzzle ) noexcept( false );
