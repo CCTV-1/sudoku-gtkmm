@@ -166,6 +166,8 @@ class SudokuBoard : public Gtk::DrawingArea
         {
             if ( this->select_cell == false )
                 return ;
+            if ( this->playing == false )
+                return ;
 
             if ( this->fill_mode == FillMode::FILL_ANSWER )
             {
