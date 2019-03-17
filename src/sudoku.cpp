@@ -100,7 +100,8 @@ Sudoku::Sudoku( puzzle_t puzzle , SUDOKU_LEVEL level ) noexcept( false )
     }
     this->level = level;
     this->puzzle = puzzle;
-    this->answer = {};
+    //std::map operator[],element unset default value:0(false)
+    //this->answer;
     this->candidates = generate_candidates( this->puzzle );
 }
 
@@ -168,8 +169,7 @@ void Sudoku::fill_answer( std::size_t x , std::size_t y , std::size_t value ) no
     }
 
     postion_t pos = { x , y };
-    auto answer_iter = std::find( this->answer.begin() , this->answer.end() , pos );
-    if ( ( this->puzzle[x][y] != 0 ) && ( answer_iter == this->answer.end() ) )
+    if ( ( this->puzzle[x][y] != 0 ) && ( this->answer[pos] == false ) )
     {
         except_message += ":cell:( " + std::to_string( x );
         except_message += " , " + std::to_string( y ) + " ) is puzzle content,can't be modify";
@@ -194,13 +194,13 @@ void Sudoku::fill_answer( std::size_t x , std::size_t y , std::size_t value ) no
 
     if ( value == 0 )
     {
-        if ( answer_iter != this->answer.end() )
-            this->answer.erase( answer_iter );
+        if ( this->answer[pos] == true )
+            this->answer[pos] = false;
     }
     else
     {
-        if ( answer_iter == this->answer.end() )
-            this->answer.push_back( pos );
+        if ( this->answer[pos] == false )
+            this->answer[pos] = true;
     }
     //update_candidates( this->candidates , this->puzzle , x , y );
 }
@@ -228,9 +228,9 @@ bool Sudoku::is_answer( std::size_t x , std::size_t y ) noexcept( false )
         except_message += ",out of range [ 0 , " + std::to_string( SUDOKU_SIZE ) + " ]";
         throw std::out_of_range( except_message );
     }
-    postion_t pos = { x , y };
 
-    return ( std::find( this->answer.begin() , this->answer.end() , pos ) != this->answer.end() );
+    postion_t pos = { x , y };
+    return this->answer[pos];
 }
 
 void Sudoku::fill_candidates( std::size_t x , std::size_t y , std::vector<cell_t> candidates ) noexcept( false )

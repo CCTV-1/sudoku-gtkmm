@@ -13,7 +13,7 @@ static constexpr cell_t SUDOKU_SIZE = 9;
 static constexpr cell_t SUDOKU_BOX_SIZE = 3;
 typedef std::pair<cell_t , cell_t> postion_t;
 typedef std::array< std::array< int8_t , SUDOKU_SIZE > , SUDOKU_SIZE > puzzle_t;
-typedef std::vector<postion_t> answer_t;
+typedef std::map<postion_t , bool> answer_t;
 typedef std::array< std::array< std::vector< cell_t > , SUDOKU_SIZE > , SUDOKU_SIZE > candidate_t;
 
 enum class SUDOKU_LEVEL:std::uint8_t
@@ -72,7 +72,6 @@ bool check_puzzle( const puzzle_t& puzzle ) noexcept( false );
 
 std::string dump_puzzle( const puzzle_t& puzzle ) noexcept( false );
 
-//not thread safe
 puzzle_t get_network_puzzle( enum SUDOKU_LEVEL level ) noexcept( false );
 
 std::string dump_candidates( const candidate_t& candidates ) noexcept( true );
