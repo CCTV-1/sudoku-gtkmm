@@ -480,7 +480,8 @@ bool fill_check( const puzzle_t& puzzle , std::size_t x , std::size_t y ) noexce
         except_message += ",out of range [ 0 , " + std::to_string( SUDOKU_SIZE ) + " ]";
         throw std::out_of_range( except_message );
     }
-    if ( puzzle[x][y] < 0 || puzzle[x][y] > SUDOKU_SIZE )
+    //cell_t is unsigned interger the value >= 0;
+    if ( puzzle[x][y] > SUDOKU_SIZE )
     {
         except_message += ":cell:( " + std::to_string( x );
         except_message += " , " + std::to_string( y ) + " ) value:" + std::to_string( puzzle[x][y] );

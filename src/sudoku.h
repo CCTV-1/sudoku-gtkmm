@@ -12,7 +12,7 @@ typedef std::uint8_t cell_t;
 static constexpr cell_t SUDOKU_SIZE = 9;
 static constexpr cell_t SUDOKU_BOX_SIZE = 3;
 typedef std::pair<cell_t , cell_t> postion_t;
-typedef std::array< std::array< int8_t , SUDOKU_SIZE > , SUDOKU_SIZE > puzzle_t;
+typedef std::array< std::array< cell_t , SUDOKU_SIZE > , SUDOKU_SIZE > puzzle_t;
 typedef std::map<postion_t , bool> answer_t;
 typedef std::array< std::array< std::vector< cell_t > , SUDOKU_SIZE > , SUDOKU_SIZE > candidate_t;
 
