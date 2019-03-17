@@ -192,16 +192,9 @@ void Sudoku::fill_answer( std::size_t x , std::size_t y , std::size_t value ) no
         throw std::invalid_argument( except_message );
     }
 
-    if ( value == 0 )
-    {
-        if ( this->answer[pos] == true )
-            this->answer[pos] = false;
-    }
-    else
-    {
-        if ( this->answer[pos] == false )
-            this->answer[pos] = true;
-    }
+   //value == 0 erase operator set this->answer[pos] = false
+   //value != 0 fill operator set this->answer[pos] = true
+    this->answer[pos] = bool(value);
     //update_candidates( this->candidates , this->puzzle , x , y );
 }
 
