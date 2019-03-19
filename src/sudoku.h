@@ -4,6 +4,7 @@
 
 #include <cstdint>
 
+#include <future>
 #include <map>
 #include <string>
 #include <vector>
@@ -28,7 +29,7 @@ enum class SUDOKU_LEVEL:std::uint8_t
 class Sudoku
 {
     public:
-        Sudoku( puzzle_t puzzle , SUDOKU_LEVEL level = SUDOKU_LEVEL::EASY ) noexcept( false );
+        Sudoku( puzzle_t puzzle = {} , SUDOKU_LEVEL level = SUDOKU_LEVEL::EASY ) noexcept( false );
         Sudoku( SUDOKU_LEVEL level ) noexcept( false );
 
         Sudoku( const Sudoku& sudoku );
@@ -72,7 +73,7 @@ bool check_puzzle( const puzzle_t& puzzle ) noexcept( false );
 
 std::string dump_puzzle( const puzzle_t& puzzle ) noexcept( false );
 
-puzzle_t get_network_puzzle( enum SUDOKU_LEVEL level ) noexcept( false );
+std::shared_future <puzzle_t> get_network_puzzle( enum SUDOKU_LEVEL level ) noexcept( false );
 
 std::string dump_candidates( const candidate_t& candidates ) noexcept( true );
 

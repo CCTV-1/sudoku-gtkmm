@@ -1,13 +1,14 @@
 #include <cstdint>
 
 #include <array>
-#include <exception>
+#include <chrono>
 #include <deque>
+#include <exception>
+#include <future>
 #include <string>
 #include <utility>
 
 #include <sigc++/sigc++.h>
-
 #include <glibmm/main.h>
 #include <glibmm/timer.h>
 #include <gtkmm/application.h>
@@ -37,21 +38,6 @@ static inline void set_rgba( const Cairo::RefPtr<Cairo::Context> & cairo_context
     cairo_context->set_source_rgba( rgba.get_red() , rgba.get_green() , rgba.get_blue() , rgba.get_alpha() );
 }
 
-/* class PuzzleCache
-{
-    public:
-        PuzzleCache()
-        {
-            ;
-        }
-        ~PuzzleCache() = default;
-        
-        save_puzzle( SUDOKU_LEVEL  )
-    private:
-        std::array< std::mutex , SUDOKU_LEVEL::_LEVEL_COUNT > mutexs;
-        std::array< std::vector<puzzle_t> , SUDOKU_LEVEL > cache;
-} */
-
 class SudokuBoard : public Gtk::DrawingArea
 {
     public:
@@ -61,8 +47,8 @@ class SudokuBoard : public Gtk::DrawingArea
             FILL_CANDIDATE
         };
 
-        SudokuBoard( Sudoku& game ):
-            game( game ),
+        SudokuBoard():
+            game(),
             puzzle( game.get_puzzle() ),
             candidates( game.get_candidates() ),
             candidate_font( "Ubuntu Mono 14" ),
@@ -103,11 +89,11 @@ class SudokuBoard : public Gtk::DrawingArea
             ;
         }
 
-        void new_game( SUDOKU_LEVEL level )
+        void new_game( puzzle_t puzzle , SUDOKU_LEVEL level )
         {
             try
             {
-                Sudoku new_sudoku( level );
+                Sudoku new_sudoku( puzzle , level );
                 this->game = new_sudoku;
                 this->operator_queues.clear();
                 this->select_cell = false;
@@ -254,6 +240,7 @@ class SudokuBoard : public Gtk::DrawingArea
 
             return status_str;
         }
+
     protected:
         bool on_draw( const Cairo::RefPtr<Cairo::Context> & cairo_context ) override
         {
@@ -429,9 +416,10 @@ class SudokuBoard : public Gtk::DrawingArea
             this->queue_draw();
             return true;
         }
+
     private:
         //game inteface
-        Sudoku& game;
+        Sudoku game;
         const puzzle_t& puzzle;
         const candidate_t& candidates;
 
@@ -564,6 +552,27 @@ class ControlButton : public Gtk::EventBox
         bool pointer_enters;
 };
 
+static bool wait_puzzle( SudokuBoard& board , std::shared_future <puzzle_t> puzzle_future , SUDOKU_LEVEL level )
+{
+    std::future_status puzzle_status;
+    puzzle_status = puzzle_future.wait_for( std::chrono::microseconds( 20 ) );
+    if ( puzzle_status == std::future_status::ready )
+    {
+        try
+        {
+            board.new_game( puzzle_future.get() , level );
+        }
+        catch( const std::exception& e )
+        {
+            g_log( __func__ , G_LOG_LEVEL_MESSAGE , e.what() );
+        }
+
+        return false;
+    }
+
+    return true;
+}
+
 bool fill_number( GdkEventButton * event , SudokuBoard& board , cell_t value )
 {
     //ignore double-clicked and three-clicked 
@@ -598,14 +607,16 @@ bool change_fill_mode( GdkEventButton * event , SudokuBoard& board , ControlButt
     return true;
 }
 
-bool new_game( GdkEventButton * event , Gtk::Popover& level_menu , SudokuBoard& board , SUDOKU_LEVEL level )
+bool get_puzzle( GdkEventButton * event , Gtk::Popover& level_menu , SudokuBoard& board , SUDOKU_LEVEL level )
 {
     //ignore double-clicked and three-clicked 
     if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
         return true;
 
     level_menu.popdown();
-    board.new_game( level );
+    std::shared_future <puzzle_t> puzzle_future = get_network_puzzle( level );
+    Glib::signal_timeout().connect( sigc::bind( &wait_puzzle , std::ref( board ) , puzzle_future , level ) , 50 );
+
     return true;
 }
 
@@ -653,8 +664,8 @@ bool update_play_status( SudokuBoard& board , ControlButton& button )
 
 int main( void )
 {
-    Sudoku sudoku( NEW_GAME_LEVEL );
-
+    std::shared_future<puzzle_t> puzzle_future = get_network_puzzle( NEW_GAME_LEVEL );
+    
     auto app = Gtk::Application::create();
     Gtk::Window window;
     window.set_resizable( false );
@@ -663,7 +674,7 @@ int main( void )
     main_grid.set_row_homogeneous();
     main_grid.set_column_homogeneous( true );
 
-    SudokuBoard sudoku_board( std::ref( sudoku ) );
+    SudokuBoard sudoku_board;
     main_grid.attach( sudoku_board , 0 , 0 , 12 , 12 );
 
     Gtk::Popover level_menu;
@@ -676,7 +687,7 @@ int main( void )
         level_button_arr[i].set_label( dump_level( static_cast<SUDOKU_LEVEL>( i ) ) );
         level_button_arr[i].set_font( "Ubuntu Mono 14" );
         level_button_arr[i].signal_button_press_event().
-            connect( sigc::bind( &new_game , std::ref( level_menu ) , std::ref( sudoku_board ) , static_cast<SUDOKU_LEVEL>( i )  ) );
+            connect( sigc::bind( &get_puzzle , std::ref( level_menu ) , std::ref( sudoku_board ) , static_cast<SUDOKU_LEVEL>( i )  ) );
         popover_grid.attach( level_button_arr[i] , 0 , i );
     }
     popover_grid.show_all();
@@ -710,5 +721,7 @@ int main( void )
 
     window.add( main_grid );
     window.show_all();
+
+    Glib::signal_timeout().connect( sigc::bind( &wait_puzzle , std::ref( sudoku_board ) , puzzle_future , NEW_GAME_LEVEL ) , 50 );
     return app->run( window );
 }

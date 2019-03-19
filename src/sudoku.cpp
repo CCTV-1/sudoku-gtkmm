@@ -5,9 +5,12 @@
 #include <algorithm>
 #include <array>
 #include <exception>
+#include <functional>
+#include <future>
 #include <map>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <curl/curl.h>
@@ -84,6 +87,113 @@ static std::size_t get_json_callback( char * content , std::size_t size , std::s
     return realsize;
 }
 
+static puzzle_t get_puzzle_callback( SUDOKU_LEVEL level ) noexcept( false )
+{
+    std::string except_message( __func__ );
+
+    //API:https://sudoku.com/api/getLevel/$(Level)
+    std::string api_url( "https://sudoku.com/api/getLevel/" + dump_level( level ) );
+
+    std::int8_t re_try = 4;
+    long default_timeout = 30L;
+    char * json_buff = nullptr;
+    char error_buff[CURL_ERROR_SIZE];
+    //c str* safe
+    error_buff[0] = '\0';
+
+    CURLcode res = CURLE_OK;
+    std::shared_ptr<CURL> curl_handle( curl_easy_init() , curl_easy_cleanup );
+    if ( curl_handle.get() == nullptr )
+    {
+        except_message += ":libcurl easy initial failure";
+        throw std::runtime_error( except_message );
+    }
+    do
+    {
+        curl_easy_setopt( curl_handle.get() , CURLOPT_URL , api_url.c_str() );
+        curl_easy_setopt( curl_handle.get() , CURLOPT_VERBOSE , 0L );
+        curl_easy_setopt( curl_handle.get() , CURLOPT_FOLLOWLOCATION , 1L );
+        curl_easy_setopt( curl_handle.get() , CURLOPT_USE_SSL , 1L );
+        curl_easy_setopt( curl_handle.get() , CURLOPT_NOPROGRESS , 1L );
+        curl_easy_setopt( curl_handle.get() , CURLOPT_TIMEOUT , default_timeout );
+        curl_easy_setopt( curl_handle.get() , CURLOPT_WRITEFUNCTION , get_json_callback );
+        curl_easy_setopt( curl_handle.get() , CURLOPT_WRITEDATA , &json_buff );
+        curl_easy_setopt( curl_handle.get() , CURLOPT_ERRORBUFFER , error_buff );
+        res = curl_easy_perform( curl_handle.get() );
+        if ( res != CURLE_OK )
+        {
+            if ( re_try == 0 )
+            {
+                except_message += ":get network puzzle failure,libcurl error message:";
+                except_message += error_buff;
+                throw std::runtime_error( except_message );
+            }
+            default_timeout += 10L;
+            re_try--;
+        }
+    }
+    while ( res != CURLE_OK );
+
+    json_error_t error;
+    std::shared_ptr<json_t> root( json_loads( json_buff , 0 , &error ) , json_decref );
+    if ( root.get() == nullptr )
+    {
+        except_message += "newtwork json:'";
+        except_message += json_buff;
+        except_message += "' format does not meet expectations";
+        throw std::invalid_argument( except_message );
+    }
+    //{
+    //    "answer": "success",
+    //    "message": "Level exist",
+    //    "desc": [
+    //        "008000402000320780702506000003050004009740200006200000000000500900005600620000190",   //puzzle
+    //        "368179452591324786742586319213658974859743261476291835187962543934815627625437198",   //solution
+    //        310,
+    //        7,
+    //        false
+    //    ]
+    //}
+    json_t * desc_array = json_object_get( root.get() , "desc" );
+    if ( json_is_array( desc_array ) == false )
+    {
+        except_message += "newtwork json:'";
+        std::shared_ptr<char> jsons( json_dumps( desc_array , JSON_INDENT( 4 ) ) , free );
+        except_message += jsons.get();
+        except_message += "' don't exist puzzle";
+        throw std::invalid_argument( except_message );
+    }
+    json_t * puzzle_node = json_array_get( desc_array , 0 );
+    if ( json_is_string( puzzle_node )  == false )
+    {
+        except_message += "newtwork json:'";
+        std::shared_ptr<char> jsons( json_dumps( puzzle_node , JSON_INDENT( 4 ) ) , free );
+        except_message += jsons.get();
+        except_message += "' don't exist puzzle";
+        throw std::invalid_argument( except_message );
+    }
+    const char * puzzle_str = json_string_value( puzzle_node );
+    if ( strnlen( puzzle_str , SUDOKU_SIZE*SUDOKU_SIZE*2 ) != SUDOKU_SIZE*SUDOKU_SIZE )
+    {
+        except_message += "puzzle:'";
+        except_message += puzzle_str;
+        except_message += "'  size failure";
+        throw std::length_error( except_message );
+    }
+    
+    puzzle_t result;
+    for( cell_t i = 0 ; i < SUDOKU_SIZE ; i++ )
+    {
+        for ( cell_t j = 0 ; j < SUDOKU_SIZE ; j++ )
+        {
+            result[i][j] = puzzle_str[ i*SUDOKU_SIZE + j ] - '0';
+        }
+    }
+
+    free( json_buff );
+    return result;
+}
+
 Sudoku::Sudoku( puzzle_t puzzle , SUDOKU_LEVEL level ) noexcept( false )
 {
     std::string except_message( __func__ );
@@ -106,7 +216,7 @@ Sudoku::Sudoku( puzzle_t puzzle , SUDOKU_LEVEL level ) noexcept( false )
 }
 
 Sudoku::Sudoku( SUDOKU_LEVEL level ) noexcept( false ) :
-    Sudoku::Sudoku( get_network_puzzle( level ) , level ) 
+    Sudoku::Sudoku( get_network_puzzle( level ).get() , level ) 
 {
     ;
 }
@@ -578,108 +688,13 @@ std::string dump_puzzle( const puzzle_t& puzzle ) noexcept( false )
     return result;
 }
 
-puzzle_t get_network_puzzle( SUDOKU_LEVEL level ) noexcept( false )
+std::shared_future <puzzle_t> get_network_puzzle( SUDOKU_LEVEL level ) noexcept( false )
 {
-    std::string except_message( __func__ );
+    std::packaged_task<puzzle_t()> task( std::bind( get_puzzle_callback , level ) );
+    std::shared_future <puzzle_t> puzzle_future = task.get_future();
+    std::thread( std::move(task) ).detach();
 
-    //API:https://sudoku.com/api/getLevel/$(Level)
-    std::string api_url( "https://sudoku.com/api/getLevel/" + dump_level( level ) );
-
-    std::int8_t re_try = 4;
-    long default_timeout = 30L;
-    char * json_buff = nullptr;
-    char error_buff[1024];
-    CURLcode res = CURLE_OK;
-    std::shared_ptr<CURL> curl_handle( curl_easy_init() , curl_easy_cleanup );
-    if ( curl_handle.get() == nullptr )
-    {
-        except_message += ":libcurl easy initial failure";
-        throw std::runtime_error( except_message );
-    }
-    do
-    {
-        curl_easy_setopt( curl_handle.get() , CURLOPT_URL , api_url.c_str() );
-        curl_easy_setopt( curl_handle.get() , CURLOPT_VERBOSE , 0L );
-        curl_easy_setopt( curl_handle.get() , CURLOPT_FOLLOWLOCATION , 1L );
-        curl_easy_setopt( curl_handle.get() , CURLOPT_USE_SSL , 1L );
-        curl_easy_setopt( curl_handle.get() , CURLOPT_NOPROGRESS , 1L );
-        curl_easy_setopt( curl_handle.get() , CURLOPT_TIMEOUT , default_timeout );
-        curl_easy_setopt( curl_handle.get() , CURLOPT_WRITEFUNCTION , get_json_callback );
-        curl_easy_setopt( curl_handle.get() , CURLOPT_WRITEDATA , &json_buff );
-        curl_easy_setopt( curl_handle.get() , CURLOPT_ERRORBUFFER , error_buff );           
-        res = curl_easy_perform( curl_handle.get() );
-        if ( res != CURLE_OK )
-        {
-            if ( re_try == 0 )
-            {
-                except_message += ":get network puzzle failure,libcurl error message:";
-                except_message += error_buff;
-                throw std::runtime_error( except_message );
-            }
-            default_timeout += 10L;
-            re_try--;
-        }
-    }
-    while ( res != CURLE_OK );
-
-    json_error_t error;
-    std::shared_ptr<json_t> root( json_loads( json_buff , 0 , &error ) , json_decref );
-    if ( root.get() == nullptr )
-    {
-        except_message += "newtwork json:'";
-        except_message += json_buff;
-        except_message += "' format does not meet expectations";
-        throw std::invalid_argument( except_message );
-    }
-    //{
-    //    "answer": "success",
-    //    "message": "Level exist",
-    //    "desc": [
-    //        "008000402000320780702506000003050004009740200006200000000000500900005600620000190",   //puzzle
-    //        "368179452591324786742586319213658974859743261476291835187962543934815627625437198",   //solution
-    //        310,
-    //        7,
-    //        false
-    //    ]
-    //}
-    json_t * desc_array = json_object_get( root.get() , "desc" );
-    if ( json_is_array( desc_array ) == false )
-    {
-        except_message += "newtwork json:'";
-        std::shared_ptr<char> jsons( json_dumps( desc_array , JSON_INDENT( 4 ) ) , free );
-        except_message += jsons.get();
-        except_message += "' don't exist puzzle";
-        throw std::invalid_argument( except_message );
-    }
-    json_t * puzzle_node = json_array_get( desc_array , 0 );
-    if ( json_is_string( puzzle_node )  == false )
-    {
-        except_message += "newtwork json:'";
-        std::shared_ptr<char> jsons( json_dumps( puzzle_node , JSON_INDENT( 4 ) ) , free );
-        except_message += jsons.get();
-        except_message += "' don't exist puzzle";
-        throw std::invalid_argument( except_message );
-    }
-    const char * puzzle_str = json_string_value( puzzle_node );
-    if ( strnlen( puzzle_str , SUDOKU_SIZE*SUDOKU_SIZE*2 ) != SUDOKU_SIZE*SUDOKU_SIZE )
-    {
-        except_message += "puzzle:'";
-        except_message += puzzle_str;
-        except_message += "'  size failure";
-        throw std::length_error( except_message );
-    }
-    
-    puzzle_t result;
-    for( cell_t i = 0 ; i < SUDOKU_SIZE ; i++ )
-    {
-        for ( cell_t j = 0 ; j < SUDOKU_SIZE ; j++ )
-        {
-            result[i][j] = puzzle_str[ i*SUDOKU_SIZE + j ] - '0';
-        }
-    }
-
-    free( json_buff );
-    return result;
+    return puzzle_future;
 }
 
 std::string dump_candidates( const candidate_t& candidates ) noexcept( true )
