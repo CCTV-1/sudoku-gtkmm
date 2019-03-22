@@ -122,14 +122,14 @@ class SudokuBoard : public Gtk::DrawingArea
 
         void set_game_state( GameState state )
         {
-            if ( state == GameState::STOP )
+            if ( state == GameState::PLAYING )
             {
                 //call start() reset timer,save time
                 this->prev_time += this->timer.elapsed();
                 this->timer.start();
                 this->state = GameState::PLAYING;
             }
-            else if ( state == GameState::PLAYING )
+            else if ( state == GameState::STOP )
             {
                 this->timer.stop();
                 this->state = GameState::STOP;
@@ -721,7 +721,7 @@ bool undo_operator( GdkEventButton * event , SudokuBoard& board )
     return true;
 }
 
-bool change_play_status( GdkEventButton * event , SudokuBoard& board )
+bool play_stop_switch( GdkEventButton * event , SudokuBoard& board )
 {
     //ignore double-clicked and three-clicked 
     if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
@@ -770,7 +770,7 @@ int main( void )
         level_button_arr[i].set_font( "Ubuntu Mono 14" );
         level_button_arr[i].signal_button_press_event().
             connect( sigc::bind( &get_puzzle , std::ref( level_menu ) , std::ref( sudoku_board ) , static_cast<SUDOKU_LEVEL>( i ) ) );
-        popover_grid.attach( level_button_arr[i] , 0 , i );
+        popover_grid.attach( level_button_arr[i] , 0 , i , 1 , 1 );
     }
     popover_grid.show_all();
 
@@ -798,7 +798,7 @@ int main( void )
 
     ControlButton play_status_button( sudoku_board.dump_play_status() , "Ubuntu Mono 14" );
     Glib::signal_timeout().connect_seconds( sigc::bind( &update_play_status , std::ref( sudoku_board ) , std::ref( play_status_button ) ) , 1 );
-    play_status_button.signal_button_press_event().connect( sigc::bind( &change_play_status , std::ref( sudoku_board ) ) );
+    play_status_button.signal_button_press_event().connect( sigc::bind( &play_stop_switch , std::ref( sudoku_board ) ) );
     main_grid.attach( play_status_button , 12 , 10 , 6 , 2 );
 
     window.add( main_grid );
