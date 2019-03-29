@@ -24,7 +24,7 @@
 
 constexpr SUDOKU_LEVEL NEW_GAME_LEVEL = SUDOKU_LEVEL::MEDIUM;
 
-static const Gdk::RGBA BOARD_BACKGROUD_RGBA( Glib::ustring( "rgba( 255 , 255 , 255 , 0.8 )" ) );
+static const Gdk::RGBA BOARD_BACKGROUD_RGBA( Glib::ustring( "rgba( 255 , 255 , 255 , 1.0 )" ) );
 static const Gdk::RGBA PUZZLE_NUMBER_RGBA  ( Glib::ustring( "rgba(   0 ,   0 ,   0 , 1.0 )" ) );
 static const Gdk::RGBA ANSWER_NUMBER_RGBA  ( Glib::ustring( "rgba(  74 , 144 , 226 , 1.0 )" ) );
 static const Gdk::RGBA SELECT_ROW_RGBA     ( Glib::ustring( "rgba( 226 , 231 , 237 , 1.0 )" ) );
@@ -43,8 +43,8 @@ class SudokuBoard : public Gtk::DrawingArea
     public:
         enum class FillMode:std::uint32_t
         {
-            FILL_ANSWER = 0,
-            FILL_CANDIDATE
+            ANSWER = 0,
+            CANDIDATE
         };
 
         enum class GameState:std::uint32_t
@@ -53,6 +53,20 @@ class SudokuBoard : public Gtk::DrawingArea
             STOP,
             VIEW_SOLUTION,
             LOADING_NEW_GAME
+        };
+
+        enum class PrintType:std::uint32_t
+        {
+            PNG = 0,
+            #ifdef CAIRO_HAS_PDF_SURFACE
+                PDF,
+            #endif
+            #ifdef CAIRO_HAS_PS_SURFACE
+                PS,
+            #endif
+            #ifdef CAIRO_HAS_SVG_SURFACE
+                SVG,
+            #endif
         };
 
         SudokuBoard():
@@ -98,28 +112,52 @@ class SudokuBoard : public Gtk::DrawingArea
             ;
         }
 
-        void new_game( puzzle_t puzzle , SUDOKU_LEVEL level )
+        void new_game( SUDOKU_LEVEL level )
         {
-            try
-            {
-                Sudoku new_sudoku( puzzle , level );
-                this->game = new_sudoku;
-                solution = game.get_solution(false)[0];
-                this->operator_queues.clear();
-                this->select_cell = false;
-                this->grid_x = 0;
-                this->grid_y = 0;
-                this->prev_time = 0;
-                this->timer.reset();
-                this->state = GameState::PLAYING;
-                this->queue_draw();
-            }
-            catch( const std::exception& e )
-            {
-                g_log( __func__ , G_LOG_LEVEL_MESSAGE , "%s" , e.what() );
-            }
+            this->set_game_state( SudokuBoard::GameState::LOADING_NEW_GAME );
+            std::shared_future <puzzle_t> puzzle_future = get_network_puzzle( level );
+            Glib::signal_timeout().connect(
+                [ this , puzzle_future , level ]()
+                {
+                    std::future_status puzzle_status;
+                    puzzle_status = puzzle_future.wait_for( std::chrono::microseconds( 20 ) );
+                    if ( puzzle_status == std::future_status::ready )
+                    {
+                        try
+                        {
+                            Sudoku new_sudoku( puzzle_future.get() , level );
+                            this->game = new_sudoku;
+                            solution = game.get_solution(false)[0];
+                            this->operator_queues.clear();
+                            this->select_cell = false;
+                            this->grid_x = 0;
+                            this->grid_y = 0;
+                            this->prev_time = 0;
+                            this->timer.reset();
+                            this->set_game_state( GameState::PLAYING );
+                            this->queue_draw();
+                        }
+                        catch( const std::exception& e )
+                        {
+                            g_log( __func__ , G_LOG_LEVEL_MESSAGE , e.what() );
+                            //rollback to old game
+                            this->set_game_state( SudokuBoard::GameState::PLAYING );
+                        }
+
+                        return false;
+                    }
+
+                    return true;
+                },
+                200
+            );
         }
 
+        GameState get_game_state( void )
+        {
+            return this->state;
+        }
+        
         void set_game_state( GameState state )
         {
             if ( state == GameState::PLAYING )
@@ -127,21 +165,14 @@ class SudokuBoard : public Gtk::DrawingArea
                 //call start() reset timer,save time
                 this->prev_time += this->timer.elapsed();
                 this->timer.start();
-                this->state = GameState::PLAYING;
             }
             else if ( state == GameState::STOP )
             {
                 this->timer.stop();
-                this->state = GameState::STOP;
             }
 
             this->state = state;
             this->queue_draw();
-        }
-
-        GameState get_game_state( void )
-        {
-            return this->state;
         }
 
         std::uint32_t get_play_time( void )
@@ -149,67 +180,70 @@ class SudokuBoard : public Gtk::DrawingArea
             return this->prev_time + this->timer.elapsed();
         }
 
-        FillMode change_fill_mode()
+        FillMode get_fill_mode( void )
         {
-            if ( this->fill_mode == FillMode::FILL_ANSWER )
-            {
-                this->fill_mode = FillMode::FILL_CANDIDATE;
-            }
-            else
-            {
-                this->fill_mode = FillMode::FILL_ANSWER;
-            }
-
             return this->fill_mode;
         }
 
-        void fill_number( cell_t value )
+        void set_fill_mode( FillMode mode )
+        {
+            this->fill_mode = mode;
+        }
+
+        void do_fill( cell_t value )
         {
             if ( this->select_cell == false )
                 return ;
             if ( this->state != GameState::PLAYING )
                 return ;
 
-            if ( this->fill_mode == FillMode::FILL_ANSWER )
+            switch ( this->fill_mode )
             {
-                try
+                case FillMode::ANSWER:
                 {
-                    cell_t old_value = this->puzzle[this->grid_x][this->grid_y];
-                    if ( value == old_value )
+                    try
                     {
-                        this->game.erase_answer( this->grid_x , this->grid_y );
-                        this->operator_queues.push_front( { OperatorType::ERASE_ANSWER , { this->grid_x , this->grid_y , value } } );
+                        cell_t old_value = this->puzzle[this->grid_x][this->grid_y];
+                        if ( value == old_value )
+                        {
+                            this->game.erase_answer( this->grid_x , this->grid_y );
+                            this->operator_queues.push_front( { OperatorType::ERASE_ANSWER , { this->grid_x , this->grid_y , value } } );
+                        }
+                        else
+                        {
+                            this->game.fill_answer( this->grid_x , this->grid_y , value );
+                            this->operator_queues.push_front( { OperatorType::FILL_ANSWER , { this->grid_x , this->grid_y , old_value } } );
+                        }
+                    }
+                    catch( const std::exception& e )
+                    {
+                        g_log( __func__ , G_LOG_LEVEL_MESSAGE , "%s" , e.what() );
+                    }
+                    break;
+                }
+                case FillMode::CANDIDATE:
+                {
+                    auto const & candidates = this->game.get_candidates()[this->grid_x][this->grid_y];
+                    if ( std::find( candidates.begin() , candidates.end() , value ) == candidates.end() )
+                    {
+                        this->game.fill_candidates( this->grid_x , this->grid_y , { value } );
+                        this->operator_queues.push_front( { OperatorType::FILL_CANDIDATE , { this->grid_x , this->grid_y , value } } );
                     }
                     else
                     {
-                        this->game.fill_answer( this->grid_x , this->grid_y , value );
-                        this->operator_queues.push_front( { OperatorType::FILL_ANSWER , { this->grid_x , this->grid_y , old_value } } );
+                        this->game.erase_candidates( this->grid_x , this->grid_y , { value } );
+                        this->operator_queues.push_front( { OperatorType::ERASE_CANDIDATE , { this->grid_x , this->grid_y , value } } );
                     }
+                    break;
                 }
-                catch( const std::exception& e )
-                {
-                    g_log( __func__ , G_LOG_LEVEL_MESSAGE , "%s" , e.what() );
-                }
-            }
-            else if ( this->fill_mode == FillMode::FILL_CANDIDATE )
-            {
-                auto const & candidates = this->game.get_candidates()[this->grid_x][this->grid_y];
-                if ( std::find( candidates.begin() , candidates.end() , value ) == candidates.end() )
-                {
-                    this->game.fill_candidates( this->grid_x , this->grid_y , { value } );
-                    this->operator_queues.push_front( { OperatorType::FILL_CANDIDATE , { this->grid_x , this->grid_y , value } } );
-                }
-                else
-                {
-                    this->game.erase_candidates( this->grid_x , this->grid_y , { value } );
-                    this->operator_queues.push_front( { OperatorType::ERASE_CANDIDATE , { this->grid_x , this->grid_y , value } } );
-                }
+                default:
+                    break;
             }
 
             this->queue_draw();
         }
 
-        void undo_operator( void )
+        void undo_fill( void )
         {
             if ( this->operator_queues.empty() )
                 return ;
@@ -256,18 +290,79 @@ class SudokuBoard : public Gtk::DrawingArea
             return status_str;
         }
 
+        void print_puzzle( PrintType type = PrintType::PNG )
+        {
+            Glib::ustring filename;
+            auto allocation = this->get_allocation();
+    
+            Cairo::RefPtr<Cairo::Surface> surface;
+            switch ( type )
+            {
+                case PrintType::PNG:
+                {
+                    filename = "puzzle.png";
+                    surface = Cairo::ImageSurface::create( Cairo::FORMAT_ARGB32 , allocation.get_width() , allocation.get_height() );
+                    break;
+                }
+                case PrintType::PDF:
+                {
+                    filename = "puzzle.pdf";
+                    surface = Cairo::PdfSurface::create( filename , allocation.get_width() , allocation.get_height() );
+                    break;
+                }
+                case PrintType::PS:
+                {
+                    filename = "puzzle.ps";
+                    surface = Cairo::PsSurface::create( filename , allocation.get_width() , allocation.get_height() );
+                    break;
+                }
+                case PrintType::SVG:
+                {
+                    filename = "puzzle.svg";
+                    surface = Cairo::SvgSurface::create( filename , allocation.get_width() , allocation.get_height() );
+                    break;
+                }
+                default:
+                    return ;
+            }
+
+            auto cairo_context = Cairo::Context::create( surface );
+            this->draw_background_color( cairo_context );
+            this->draw_index( cairo_context );
+            this->draw_board_box( cairo_context );
+            this->draw_board_line( cairo_context );
+            this->draw_puzzle( cairo_context , this->puzzle );
+
+            //write file may throw exception,but does not affect other functions.
+            //so just output warning and return.
+            try
+            {
+                switch( type )
+                {
+                    case PrintType::PNG:
+                        surface->write_to_png( filename );
+                        break;
+                    case PrintType::PDF:
+                    case PrintType::PS:
+                    case PrintType::SVG:
+                        surface->show_page();
+                        break;
+                }
+            }
+            catch( const std::exception& e )
+            {
+                g_log( __func__ , G_LOG_LEVEL_WARNING , "writing file:'%s' failure,exception message:'%s'"
+                    , filename.c_str() , e.what() );
+            }
+        }
+
     protected:
         bool on_draw( const Cairo::RefPtr<Cairo::Context> & cairo_context ) override
         {
             cairo_context->save();
             cairo_context->set_line_join( Cairo::LINE_JOIN_MITER );
 
-            //draw background color
-            //cairo_context->set_source_rgba( 1.0 , 1.0 , 1.0 , 0.8 );
-            set_rgba( cairo_context , BOARD_BACKGROUD_RGBA );
-            cairo_context->rectangle( 0 , 0 , this->board_size , this->board_size );
-            cairo_context->stroke_preserve();
-            cairo_context->fill();
+            this->draw_background_color( cairo_context );
 
             auto state_to_string = [ this ]() -> std::string
             {
@@ -294,33 +389,8 @@ class SudokuBoard : public Gtk::DrawingArea
                 return true;
             }
 
-            constexpr const char * row_indexs[] = 
-            {
-                "A" , "B" , "C" , "D" , "E" , "F" , "G" , "H" , "I"
-            };
-            constexpr const char * column_indexs[] = 
-            {
-                "1" , "2" , "3" , "4" , "5" , "6" , "7" , "8" , "9"
-            };
-
-            //draw index
-            set_rgba( cairo_context , PUZZLE_NUMBER_RGBA );
-            this->layout->set_font_description( this->candidate_font );
-            cairo_context->set_line_width( this->line_size );
-            for( cell_t i = 0 ; i < SUDOKU_SIZE ; i++ )
-            {
-                this->layout->set_text( row_indexs[i] );
-                cairo_context->move_to( this->row_index_size/2 , this->column_index_size + ( this->grid_size )/2 - ( this->font_size )/2 + i*( ( this->grid_size ) ) );
-                this->layout->show_in_cairo_context( cairo_context );
-                this->layout->set_text( column_indexs[i] );
-                cairo_context->move_to( this->row_index_size + ( this->grid_size )/2 - ( this->font_size )/2 + i*( ( this->grid_size ) ) , this->column_index_size/2 );
-                this->layout->show_in_cairo_context( cairo_context );
-            }
-
-            //draw board box
-            set_rgba( cairo_context , PUZZLE_NUMBER_RGBA );
-            cairo_context->rectangle( this->row_index_size , this->column_index_size , SUDOKU_SIZE*( this->grid_size ) , SUDOKU_SIZE*( this->grid_size ) );
-            cairo_context->stroke();
+            this->draw_index( cairo_context );
+            this->draw_board_box( cairo_context );
 
             //draw select highlight
             if ( this->select_cell )
@@ -354,41 +424,12 @@ class SudokuBoard : public Gtk::DrawingArea
                 cairo_context->fill();
             }
 
-            //draw board line
-            set_rgba( cairo_context , PUZZLE_NUMBER_RGBA );
-            for ( cell_t i = 1 ; i < SUDOKU_SIZE ; i++ )
-            {
-                if ( i%SUDOKU_BOX_SIZE == 0 )
-                    cairo_context->set_line_width( this->bold_line_size );
-                else
-                    cairo_context->set_line_width( this->line_size );
-                cairo_context->move_to( this->row_index_size + i*( this->grid_size ) , this->column_index_size );
-                cairo_context->line_to( this->row_index_size + i*( this->grid_size ) , this->column_index_size + 
-                                        SUDOKU_SIZE*( this->grid_size ) );
-
-                cairo_context->move_to( this->row_index_size , this->column_index_size + i*( this->grid_size ) );
-                cairo_context->line_to( this->row_index_size + SUDOKU_SIZE*( this->grid_size )
-                                        , this->column_index_size + i*( this->grid_size ) );
-                cairo_context->stroke();
-            }
+            this->draw_board_line( cairo_context );
 
             if ( this->state == GameState::VIEW_SOLUTION )
             {
-                set_rgba( cairo_context , PUZZLE_NUMBER_RGBA );
-                this->layout->set_font_description( solutions_font );
-                auto size = this->solutions_font.get_size()/Pango::SCALE;
-                for ( cell_t i = 0 ; i < SUDOKU_SIZE ; i++ )
-                {
-                    for ( cell_t j = 0 ; j < SUDOKU_SIZE ; j++ )
-                    {
-                        cell_t number = this->solution[i][j];
-                        this->layout->set_text( std::to_string( number ) );
-                        cairo_context->move_to( this->row_index_size + j*( this->grid_size ) + ( this->grid_size )/2 - size/2
-                                                    , this->column_index_size + i*( this->grid_size ) + ( this->grid_size )/2 - size );
-                        this->layout->show_in_cairo_context( cairo_context );
-                    }
-                }
-
+                this->draw_puzzle( cairo_context , this->solution );
+                //restore on_draw save
                 cairo_context->restore();
                 return true;
             }
@@ -450,6 +491,7 @@ class SudokuBoard : public Gtk::DrawingArea
             cairo_context->restore();
             return true;
         }
+
         bool on_button_press_event( GdkEventButton * event ) override
         {
             //other game state disable button event
@@ -465,12 +507,12 @@ class SudokuBoard : public Gtk::DrawingArea
                 {
                     if ( this->state == GameState::VIEW_SOLUTION )
                     {
-                        this->state = GameState::PLAYING;
+                        this->set_game_state( GameState::PLAYING );
                     }
                     //only GameState::PlAYING
                     else
                     {
-                        this->state = GameState::VIEW_SOLUTION;
+                        this->set_game_state( GameState::VIEW_SOLUTION );
                     }
                     
                 }
@@ -485,13 +527,12 @@ class SudokuBoard : public Gtk::DrawingArea
             this->grid_x = ( y - this->row_index_size )/this->grid_size;
             this->grid_y = ( x - this->column_index_size )/this->grid_size;
             this->select_cell = true;
-
             this->queue_draw();
+
             return true;
         }
 
     private:
-
         //game inteface
         Sudoku game;
         const puzzle_t& puzzle;
@@ -511,7 +552,7 @@ class SudokuBoard : public Gtk::DrawingArea
         std::size_t board_size;
 
         //game status
-        FillMode fill_mode = FillMode::FILL_ANSWER;
+        FillMode fill_mode = FillMode::ANSWER;
         bool select_cell = false;
         cell_t grid_x = 0;
         cell_t grid_y = 0;
@@ -538,6 +579,104 @@ class SudokuBoard : public Gtk::DrawingArea
 
         typedef std::deque< std::pair< OperatorType , OperatorValue > > operator_t;
         operator_t operator_queues;
+
+        void draw_background_color( const Cairo::RefPtr<Cairo::Context> & cairo_context )
+        {
+            cairo_context->save();
+            //draw background color
+            set_rgba( cairo_context , BOARD_BACKGROUD_RGBA );
+            cairo_context->paint();
+            //cairo_context->rectangle( 0 , 0 , this->board_size , this->board_size );
+            //cairo_context->stroke_preserve();
+            //cairo_context->fill();
+            cairo_context->restore();
+        }
+
+        void draw_index( const Cairo::RefPtr<Cairo::Context> & cairo_context )
+        {
+            cairo_context->save();
+            constexpr const char * row_indexs[] = 
+            {
+                "A" , "B" , "C" , "D" , "E" , "F" , "G" , "H" , "I"
+            };
+            constexpr const char * column_indexs[] = 
+            {
+                "1" , "2" , "3" , "4" , "5" , "6" , "7" , "8" , "9"
+            };
+
+            //draw index
+            set_rgba( cairo_context , PUZZLE_NUMBER_RGBA );
+            this->layout->set_font_description( this->candidate_font );
+            cairo_context->set_line_width( this->line_size );
+            for( cell_t i = 0 ; i < SUDOKU_SIZE ; i++ )
+            {
+                this->layout->set_text( row_indexs[i] );
+                cairo_context->move_to( this->row_index_size/2 , this->column_index_size + ( this->grid_size )/2 - ( this->font_size )/2 + i*( ( this->grid_size ) ) );
+                this->layout->show_in_cairo_context( cairo_context );
+                this->layout->set_text( column_indexs[i] );
+                cairo_context->move_to( this->row_index_size + ( this->grid_size )/2 - ( this->font_size )/2 + i*( ( this->grid_size ) ) , this->column_index_size/2 );
+                this->layout->show_in_cairo_context( cairo_context );
+            }
+            cairo_context->restore();
+        }
+
+        void draw_board_box( const Cairo::RefPtr<Cairo::Context> & cairo_context )
+        {
+            cairo_context->save();
+            //draw board box
+            set_rgba( cairo_context , PUZZLE_NUMBER_RGBA );
+            cairo_context->rectangle( this->row_index_size , this->column_index_size , SUDOKU_SIZE*( this->grid_size ) , SUDOKU_SIZE*( this->grid_size ) );
+            cairo_context->stroke();
+            cairo_context->restore();
+        }
+
+        void draw_board_line( const Cairo::RefPtr<Cairo::Context> & cairo_context )
+        {
+            cairo_context->save();
+            //draw board line
+            set_rgba( cairo_context , PUZZLE_NUMBER_RGBA );
+            for ( cell_t i = 1 ; i < SUDOKU_SIZE ; i++ )
+            {
+                if ( i%SUDOKU_BOX_SIZE == 0 )
+                    cairo_context->set_line_width( this->bold_line_size );
+                else
+                    cairo_context->set_line_width( this->line_size );
+                cairo_context->move_to( this->row_index_size + i*( this->grid_size ) , this->column_index_size );
+                cairo_context->line_to( this->row_index_size + i*( this->grid_size ) , this->column_index_size + 
+                                        SUDOKU_SIZE*( this->grid_size ) );
+
+                cairo_context->move_to( this->row_index_size , this->column_index_size + i*( this->grid_size ) );
+                cairo_context->line_to( this->row_index_size + SUDOKU_SIZE*( this->grid_size )
+                                        , this->column_index_size + i*( this->grid_size ) );
+                cairo_context->stroke();
+            }
+            cairo_context->restore();
+        }
+
+        void draw_puzzle( const Cairo::RefPtr<Cairo::Context> & cairo_context , const puzzle_t& puzzle )
+        {
+            cairo_context->save();
+            //draw puzzle
+            set_rgba( cairo_context , PUZZLE_NUMBER_RGBA );
+            this->layout->set_font_description( solutions_font );
+            auto size = this->solutions_font.get_size()/Pango::SCALE;
+            for ( cell_t i = 0 ; i < SUDOKU_SIZE ; i++ )
+            {
+                for ( cell_t j = 0 ; j < SUDOKU_SIZE ; j++ )
+                {
+                    cell_t number = puzzle[i][j];
+                    if ( number == 0 )
+                        continue;
+                    this->layout->set_text( std::to_string( number ) );
+                    cairo_context->move_to( this->row_index_size + j*( this->grid_size ) + ( this->grid_size )/2 - size/2
+                                                , this->column_index_size + i*( this->grid_size ) + ( this->grid_size )/2 - size );
+                    this->layout->show_in_cairo_context( cairo_context );
+                }
+            }
+
+            cairo_context->restore();
+        }
+
 };
 
 class ControlButton : public Gtk::EventBox
@@ -627,126 +766,8 @@ class ControlButton : public Gtk::EventBox
         bool pointer_enters;
 };
 
-static bool wait_puzzle( SudokuBoard& board , std::shared_future <puzzle_t> puzzle_future , SUDOKU_LEVEL level )
-{
-    std::future_status puzzle_status;
-    puzzle_status = puzzle_future.wait_for( std::chrono::microseconds( 20 ) );
-    if ( puzzle_status == std::future_status::ready )
-    {
-        try
-        {
-            board.new_game( puzzle_future.get() , level );
-        }
-        catch( const std::exception& e )
-        {
-            g_log( __func__ , G_LOG_LEVEL_MESSAGE , e.what() );
-        }
-
-        return false;
-    }
-
-    return true;
-}
-
-bool fill_number( GdkEventButton * event , SudokuBoard& board , cell_t value )
-{
-    //ignore double-clicked and three-clicked 
-    if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
-        return true;
-
-    board.fill_number( value );
-
-    return true;
-}
-
-bool change_fill_mode( GdkEventButton * event , SudokuBoard& board , ControlButton& button )
-{
-    //ignore double-clicked and three-clicked 
-    if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
-        return true;
-
-    SudokuBoard::FillMode new_mode = board.change_fill_mode();
-
-    switch ( new_mode )
-    {
-        case SudokuBoard::FillMode::FILL_ANSWER:
-            button.set_label( "Fill Mode:Answer" );
-            break;
-        case SudokuBoard::FillMode::FILL_CANDIDATE:
-            button.set_label( "Fill Mode:Candidate" );
-            break;
-        default:
-            break;
-    }
-
-    return true;
-}
-
-bool get_puzzle( GdkEventButton * event , Gtk::Popover& level_menu , SudokuBoard& board , SUDOKU_LEVEL level )
-{
-    //ignore double-clicked and three-clicked 
-    if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
-        return true;
-
-    level_menu.popdown();
-    board.set_game_state( SudokuBoard::GameState::LOADING_NEW_GAME );
-    std::shared_future <puzzle_t> puzzle_future = get_network_puzzle( level );
-    Glib::signal_timeout().connect( sigc::bind( &wait_puzzle , std::ref( board ) , puzzle_future , level ) , 200 );
-
-    return true;
-}
-
-bool open_game_menu( GdkEventButton * event , Gtk::Popover& level_menu )
-{
-    //ignore double-clicked and three-clicked 
-    if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
-        return true;
-
-    Gtk::Widget * relative_widget = level_menu.get_relative_to();
-    level_menu.set_size_request( relative_widget->get_allocated_width() );
-    level_menu.set_pointing_to( { relative_widget->get_allocated_width()/2 , relative_widget->get_allocated_height()/2 , 0 , 0 } );
-    level_menu.popup();
-
-    return true;
-}
-
-bool undo_operator( GdkEventButton * event , SudokuBoard& board )
-{
-    //ignore double-clicked and three-clicked 
-    if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
-        return true;
-    
-    board.undo_operator();
-
-    return true;
-}
-
-bool play_stop_switch( GdkEventButton * event , SudokuBoard& board )
-{
-    //ignore double-clicked and three-clicked 
-    if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
-        return true;
-
-    SudokuBoard::GameState state = board.get_game_state();
-    if ( state == SudokuBoard::GameState::PLAYING )
-        board.set_game_state( SudokuBoard::GameState::STOP );
-    else if ( state == SudokuBoard::GameState::STOP )
-        board.set_game_state( SudokuBoard::GameState::PLAYING );
-
-    //other state ignore
-    return true;
-}
-
-bool update_play_status( SudokuBoard& board , ControlButton& button )
-{
-    button.set_label( board.dump_play_status() );
-    return true;
-}
-
 int main( void )
-{
-    std::shared_future<puzzle_t> puzzle_future = get_network_puzzle( NEW_GAME_LEVEL );
-    
+{   
     auto app = Gtk::Application::create();
     Gtk::Window window;
     window.set_resizable( false );
@@ -756,7 +777,7 @@ int main( void )
     main_grid.set_column_homogeneous( true );
 
     SudokuBoard sudoku_board;
-    sudoku_board.set_game_state( SudokuBoard::GameState::LOADING_NEW_GAME );
+    sudoku_board.new_game( NEW_GAME_LEVEL );
     main_grid.attach( sudoku_board , 0 , 0 , 12 , 12 );
 
     Gtk::Popover level_menu;
@@ -768,8 +789,18 @@ int main( void )
     {
         level_button_arr[i].set_label( dump_level( static_cast<SUDOKU_LEVEL>( i ) ) );
         level_button_arr[i].set_font( "Ubuntu Mono 14" );
-        level_button_arr[i].signal_button_press_event().
-            connect( sigc::bind( &get_puzzle , std::ref( level_menu ) , std::ref( sudoku_board ) , static_cast<SUDOKU_LEVEL>( i ) ) );
+        level_button_arr[i].signal_button_press_event().connect(
+            [ &sudoku_board , &level_menu , i ]( GdkEventButton * event )
+            {
+                //ignore double-clicked and three-clicked 
+                if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
+                    return true;
+
+                level_menu.popdown();
+                sudoku_board.new_game( static_cast<SUDOKU_LEVEL>( i ) );
+                return true;
+            }
+        );
         popover_grid.attach( level_button_arr[i] , 0 , i , 1 , 1 );
     }
     popover_grid.show_all();
@@ -777,33 +808,120 @@ int main( void )
     ControlButton new_game_button( "New Game" , "Ubuntu Mono 28" );
     level_menu.add( popover_grid );
     level_menu.set_relative_to( new_game_button );
-    new_game_button.signal_button_press_event().connect( sigc::bind( &open_game_menu , std::ref( level_menu ) ) );
+    new_game_button.signal_button_press_event().connect(
+        [ &level_menu ]( GdkEventButton * event )
+        {
+            //ignore double-clicked and three-clicked 
+            if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
+                return true;
+
+            Gtk::Widget * relative_widget = level_menu.get_relative_to();
+            level_menu.set_size_request( relative_widget->get_allocated_width() );
+            level_menu.set_pointing_to( { relative_widget->get_allocated_width()/2 , relative_widget->get_allocated_height()/2 , 0 , 0 } );
+            level_menu.popup();
+
+            return true;
+        }
+    );
     main_grid.attach( new_game_button , 12 , 0 , 6 , 2 );
 
-    std::array< ControlButton , SUDOKU_SIZE > button_arr;
+    std::array<ControlButton , SUDOKU_SIZE> button_arr;
     for( cell_t i = 0 ; i < SUDOKU_SIZE ; i++ )
     {
         button_arr[i].set_label( std::to_string( i + 1 ) );
-        button_arr[i].signal_button_press_event().connect( sigc::bind( &fill_number , std::ref( sudoku_board ) , i + 1 ) );
+        button_arr[i].signal_button_press_event().connect(
+            [ &sudoku_board , i ]( GdkEventButton * event )
+            {
+                //ignore double-clicked and three-clicked 
+                if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
+                    return true;
+
+                sudoku_board.do_fill( i + 1 );
+
+                return true;
+            }
+        );
         main_grid.attach( button_arr[i] , 12 + i%SUDOKU_BOX_SIZE*2 , 2 + i/SUDOKU_BOX_SIZE*2 , 2 , 2 );
     }
 
     ControlButton fill_mode_button( "Fill Mode:Answer" , "Ubuntu Mono 14" );
-    fill_mode_button.signal_button_press_event().connect( sigc::bind( &change_fill_mode , std::ref( sudoku_board ) , std::ref( fill_mode_button ) ) );
+    fill_mode_button.signal_button_press_event().connect(
+        [ &sudoku_board , &fill_mode_button ]( GdkEventButton * event )
+        {
+            //ignore double-clicked and three-clicked 
+            if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
+                return true;
+
+            SudokuBoard::FillMode old_mode = sudoku_board.get_fill_mode();
+
+            switch ( old_mode )
+            {
+                case SudokuBoard::FillMode::ANSWER:
+                {
+                    sudoku_board.set_fill_mode( SudokuBoard::FillMode::CANDIDATE );
+                    fill_mode_button.set_label( "Fill Mode:Candidate" );
+                    break;
+                }
+                case SudokuBoard::FillMode::CANDIDATE:
+                {
+                    sudoku_board.set_fill_mode( SudokuBoard::FillMode::ANSWER );
+                    fill_mode_button.set_label( "Fill Mode:Answer" );
+                    break;
+                }
+                default:
+                    break;
+            }
+
+            return true;
+        }
+    );
     main_grid.attach( fill_mode_button , 12 , 8 , 3 , 2 );
 
     ControlButton undo_button( "Undo" , "Ubuntu Mono 14" );
-    undo_button.signal_button_press_event().connect( sigc::bind( &undo_operator , std::ref( sudoku_board ) ) );
+    undo_button.signal_button_press_event().connect(
+        [ &sudoku_board ]( GdkEventButton * event )
+        {
+            //ignore double-clicked and three-clicked 
+            if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
+                return true;
+            sudoku_board.undo_fill();
+
+            return true;
+        }
+    );
     main_grid.attach( undo_button , 15 , 8 , 3 , 2 );
 
     ControlButton play_status_button( sudoku_board.dump_play_status() , "Ubuntu Mono 14" );
-    Glib::signal_timeout().connect_seconds( sigc::bind( &update_play_status , std::ref( sudoku_board ) , std::ref( play_status_button ) ) , 1 );
-    play_status_button.signal_button_press_event().connect( sigc::bind( &play_stop_switch , std::ref( sudoku_board ) ) );
+    play_status_button.signal_button_press_event().connect(
+        [ &sudoku_board ]( GdkEventButton * event )
+        {
+            //ignore double-clicked and three-clicked 
+            if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
+                return true;
+
+            SudokuBoard::GameState state = sudoku_board.get_game_state();
+            if ( state == SudokuBoard::GameState::PLAYING )
+                sudoku_board.set_game_state( SudokuBoard::GameState::STOP );
+            else if ( state == SudokuBoard::GameState::STOP )
+                sudoku_board.set_game_state( SudokuBoard::GameState::PLAYING );
+
+            //other state ignore
+            return true;
+        }
+    );
     main_grid.attach( play_status_button , 12 , 10 , 6 , 2 );
 
     window.add( main_grid );
     window.show_all();
 
-    Glib::signal_timeout().connect( sigc::bind( &wait_puzzle , std::ref( sudoku_board ) , puzzle_future , NEW_GAME_LEVEL ) , 200 );
+    Glib::signal_timeout().connect_seconds( 
+        [ &sudoku_board , &play_status_button ]()
+        {
+            play_status_button.set_label( sudoku_board.dump_play_status() );
+            return true;
+        },
+        1 
+    );
+
     return app->run( window );
 }
