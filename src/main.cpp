@@ -12,17 +12,20 @@
 #include <glibmm/main.h>
 #include <glibmm/timer.h>
 #include <gtkmm/application.h>
-#include <gtkmm/window.h>
+#include <gtkmm/builder.h>
 #include <gtkmm/drawingarea.h>
 #include <gtkmm/eventbox.h>
 #include <gtkmm/grid.h>
+#include <gtkmm/headerbar.h>
 #include <gtkmm/label.h>
 #include <gtkmm/popover.h>
+#include <gtkmm/window.h>
 #include <gtkmm/window.h>
 
 #include "sudoku.h"
 
 constexpr SUDOKU_LEVEL NEW_GAME_LEVEL = SUDOKU_LEVEL::MEDIUM;
+static const Glib::ustring UI_FILE( "./resource/sudoku.ui" );
 
 static const Gdk::RGBA BOARD_BACKGROUD_RGBA( Glib::ustring( "rgba( 255 , 255 , 255 , 1.0 )" ) );
 static const Gdk::RGBA PUZZLE_NUMBER_RGBA  ( Glib::ustring( "rgba(   0 ,   0 ,   0 , 1.0 )" ) );
@@ -69,7 +72,11 @@ class SudokuBoard : public Gtk::DrawingArea
             #endif
         };
 
-        SudokuBoard():
+        //Constructor( BaseObjectType * cobject , const Glib::RefPtr<Gtk::Builder>& ):
+        //              BaseClass( cobject )
+        //to support Gtk::Builder::get_widget_derived()
+        SudokuBoard( BaseObjectType * cobject , const Glib::RefPtr<Gtk::Builder>& ):
+            Gtk::DrawingArea( cobject ),
             game(),
             puzzle( game.get_puzzle() ),
             candidates( game.get_candidates() ),
@@ -79,7 +86,6 @@ class SudokuBoard : public Gtk::DrawingArea
             state( GameState::PLAYING ),
             timer()
         {
-
             /*
             * column_index_size: 5*$(font size)
             * '  A  '
@@ -127,7 +133,7 @@ class SudokuBoard : public Gtk::DrawingArea
                         {
                             Sudoku new_sudoku( puzzle_future.get() , level );
                             this->game = new_sudoku;
-                            solution = game.get_solution(false)[0];
+                            this->solution = game.get_solution(false)[0];
                             this->operator_queues.clear();
                             this->select_cell = false;
                             this->grid_x = 0;
@@ -274,13 +280,11 @@ class SudokuBoard : public Gtk::DrawingArea
             this->queue_draw();
         }
 
-        Glib::ustring dump_play_status( void )
+        Glib::ustring dump_play_time( void )
         {
             std::uint32_t playing_time = this->get_play_time();
             Glib::ustring status_str;
 
-            status_str += "Puzzle Level:\t\t";
-            status_str += dump_level( this->game.get_puzzle_level() );
             status_str += "\nPlay Time:\t\t";
             Glib::ustring time_string( std::to_string( playing_time/3600 ) );
             time_string += ":" + std::to_string( playing_time/60 );
@@ -682,7 +686,23 @@ class SudokuBoard : public Gtk::DrawingArea
 class ControlButton : public Gtk::EventBox
 {
     public:
-        ControlButton( const Glib::ustring& label = "" , const Glib::ustring& font_name = "Ubuntu Mono 28" ):
+        ControlButton( const Glib::ustring& label = "" , const Glib::ustring& font_name = "Ubuntu Mono 28" )
+            :label( label ),
+            font_desc( font_name ),
+            pointer_enters( false )
+        {
+            this->layout = this->create_pango_layout( label );
+            this->layout->set_font_description( this->font_desc );
+            std::size_t font_size = font_desc.get_size()/Pango::SCALE;
+            this->set_size_request( font_size*4 , font_size*4 );
+            this->set_events( Gdk::EventMask::BUTTON_PRESS_MASK |
+                              Gdk::EventMask::LEAVE_NOTIFY_MASK |
+                              Gdk::EventMask::ENTER_NOTIFY_MASK
+            );
+        }
+        ControlButton( BaseObjectType * cobject , const Glib::RefPtr<Gtk::Builder>& , 
+            const Glib::ustring& label = "" , const Glib::ustring& font_name = "Ubuntu Mono 28" )
+            :Gtk::EventBox( cobject ),
             label( label ),
             font_desc( font_name ),
             pointer_enters( false )
@@ -767,105 +787,106 @@ class ControlButton : public Gtk::EventBox
 };
 
 int main( void )
-{   
+{
     auto app = Gtk::Application::create();
-    Gtk::Window window;
-    window.set_resizable( false );
 
-    Gtk::Grid main_grid;
-    main_grid.set_row_homogeneous();
-    main_grid.set_column_homogeneous( true );
+    Glib::RefPtr<Gtk::Builder> builder = Gtk::Builder::create_from_file( UI_FILE );
 
-    SudokuBoard sudoku_board;
-    sudoku_board.new_game( NEW_GAME_LEVEL );
-    main_grid.attach( sudoku_board , 0 , 0 , 12 , 12 );
+    Gtk::Window * window;
+    builder->get_widget( "GameWindow" , window );
 
-    Gtk::Popover level_menu;
-    Gtk::Grid popover_grid;
-    popover_grid.set_row_homogeneous();
-    popover_grid.set_column_homogeneous( true );
+    Gtk::HeaderBar * headbar;
+    builder->get_widget( "GameBar" , headbar );
+    headbar->set_title( dump_level( NEW_GAME_LEVEL ) );
+
+    SudokuBoard * sudoku_board;
+    builder->get_widget_derived( "SudokuBoard" , sudoku_board );
+    sudoku_board->new_game( NEW_GAME_LEVEL );
+
+    Gtk::Popover * level_menu;
+    builder->get_widget( "LevelMenu" , level_menu );
+    Gtk::Grid * level_grid;
+    builder->get_widget( "LevelGrid" , level_grid );
     std::array< ControlButton , static_cast<std::size_t>( SUDOKU_LEVEL::_LEVEL_COUNT ) > level_button_arr;
     for( cell_t i = 0 ; i < static_cast<cell_t>( SUDOKU_LEVEL::_LEVEL_COUNT ) ; i++ )
     {
         level_button_arr[i].set_label( dump_level( static_cast<SUDOKU_LEVEL>( i ) ) );
         level_button_arr[i].set_font( "Ubuntu Mono 14" );
         level_button_arr[i].signal_button_press_event().connect(
-            [ &sudoku_board , &level_menu , i ]( GdkEventButton * event )
+            [ sudoku_board , level_menu , headbar , i ]( GdkEventButton * event )
             {
                 //ignore double-clicked and three-clicked 
                 if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
                     return true;
 
-                level_menu.popdown();
-                sudoku_board.new_game( static_cast<SUDOKU_LEVEL>( i ) );
+                level_menu->popdown();
+                headbar->set_title( dump_level( static_cast<SUDOKU_LEVEL>( i ) ) );
+                sudoku_board->new_game( static_cast<SUDOKU_LEVEL>( i ) );
                 return true;
             }
         );
-        popover_grid.attach( level_button_arr[i] , 0 , i , 1 , 1 );
+        level_grid->attach( level_button_arr[i] , 0 , i , 1 , 1 );
     }
-    popover_grid.show_all();
+    level_grid->show_all();
 
-    ControlButton new_game_button( "New Game" , "Ubuntu Mono 28" );
-    level_menu.add( popover_grid );
-    level_menu.set_relative_to( new_game_button );
-    new_game_button.signal_button_press_event().connect(
-        [ &level_menu ]( GdkEventButton * event )
+    ControlButton * new_game_button;
+    builder->get_widget_derived( "NewGame" , new_game_button , "New Game" , "Ubuntu Mono 28" );
+    new_game_button->signal_button_press_event().connect(
+        [ level_menu ]( GdkEventButton * event )
         {
             //ignore double-clicked and three-clicked 
             if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
                 return true;
 
-            Gtk::Widget * relative_widget = level_menu.get_relative_to();
-            level_menu.set_size_request( relative_widget->get_allocated_width() );
-            level_menu.set_pointing_to( { relative_widget->get_allocated_width()/2 , relative_widget->get_allocated_height()/2 , 0 , 0 } );
-            level_menu.popup();
+            Gtk::Widget * relative_widget = level_menu->get_relative_to();
+            level_menu->set_size_request( relative_widget->get_allocated_width() );
+            level_menu->set_pointing_to( { relative_widget->get_allocated_width()/2 , relative_widget->get_allocated_height()/2 , 0 , 0 } );
+            level_menu->popup();
 
             return true;
         }
     );
-    main_grid.attach( new_game_button , 12 , 0 , 6 , 2 );
 
-    std::array<ControlButton , SUDOKU_SIZE> button_arr;
     for( cell_t i = 0 ; i < SUDOKU_SIZE ; i++ )
     {
-        button_arr[i].set_label( std::to_string( i + 1 ) );
-        button_arr[i].signal_button_press_event().connect(
-            [ &sudoku_board , i ]( GdkEventButton * event )
+        ControlButton * fill_button;
+        builder->get_widget_derived( "Fill" + std::to_string( i + 1 ) , fill_button , std::to_string( i + 1 ) );
+        fill_button->signal_button_press_event().connect(
+            [ sudoku_board , i ]( GdkEventButton * event )
             {
                 //ignore double-clicked and three-clicked 
                 if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
                     return true;
 
-                sudoku_board.do_fill( i + 1 );
-
+                sudoku_board->do_fill( i + 1 );
                 return true;
             }
         );
-        main_grid.attach( button_arr[i] , 12 + i%SUDOKU_BOX_SIZE*2 , 2 + i/SUDOKU_BOX_SIZE*2 , 2 , 2 );
     }
 
-    ControlButton fill_mode_button( "Fill Mode:Answer" , "Ubuntu Mono 14" );
-    fill_mode_button.signal_button_press_event().connect(
-        [ &sudoku_board , &fill_mode_button ]( GdkEventButton * event )
+    ControlButton * fill_mode;
+    builder->get_widget_derived( "FillMode" , fill_mode , "Fill Mode:Answer" , "Ubuntu Mono 14" );
+    fill_mode->signal_button_press_event().connect(
+        [ sudoku_board , fill_mode ]( GdkEventButton * event )
         {
             //ignore double-clicked and three-clicked 
             if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
                 return true;
 
-            SudokuBoard::FillMode old_mode = sudoku_board.get_fill_mode();
+            SudokuBoard::FillMode old_mode = sudoku_board->get_fill_mode();
 
             switch ( old_mode )
             {
                 case SudokuBoard::FillMode::ANSWER:
                 {
-                    sudoku_board.set_fill_mode( SudokuBoard::FillMode::CANDIDATE );
-                    fill_mode_button.set_label( "Fill Mode:Candidate" );
+                    sudoku_board->set_fill_mode( SudokuBoard::FillMode::CANDIDATE );
+                    fill_mode->set_label( "Fill Mode:Candidate" );
                     break;
                 }
                 case SudokuBoard::FillMode::CANDIDATE:
                 {
-                    sudoku_board.set_fill_mode( SudokuBoard::FillMode::ANSWER );
-                    fill_mode_button.set_label( "Fill Mode:Answer" );
+                    sudoku_board->set_fill_mode( SudokuBoard::FillMode::ANSWER );
+                    fill_mode->set_label( "Fill Mode:Answer" );
                     break;
                 }
                 default:
@@ -875,53 +896,50 @@ int main( void )
             return true;
         }
     );
-    main_grid.attach( fill_mode_button , 12 , 8 , 3 , 2 );
 
-    ControlButton undo_button( "Undo" , "Ubuntu Mono 14" );
-    undo_button.signal_button_press_event().connect(
-        [ &sudoku_board ]( GdkEventButton * event )
+    ControlButton * undo_button;
+    builder->get_widget_derived( "Undo" , undo_button , "Undo" , "Ubuntu Mono 14" );
+    undo_button->signal_button_press_event().connect(
+        [ sudoku_board ]( GdkEventButton * event )
         {
             //ignore double-clicked and three-clicked 
             if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
                 return true;
-            sudoku_board.undo_fill();
+            sudoku_board->undo_fill();
 
             return true;
         }
     );
-    main_grid.attach( undo_button , 15 , 8 , 3 , 2 );
 
-    ControlButton play_status_button( sudoku_board.dump_play_status() , "Ubuntu Mono 14" );
-    play_status_button.signal_button_press_event().connect(
-        [ &sudoku_board ]( GdkEventButton * event )
+    ControlButton * play_status_button;
+    builder->get_widget_derived( "ChangePlayState" , play_status_button , sudoku_board->dump_play_time() , "Ubuntu Mono 14" );
+    play_status_button->signal_button_press_event().connect(
+        [ sudoku_board ]( GdkEventButton * event )
         {
             //ignore double-clicked and three-clicked 
             if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
                 return true;
 
-            SudokuBoard::GameState state = sudoku_board.get_game_state();
+            SudokuBoard::GameState state = sudoku_board->get_game_state();
             if ( state == SudokuBoard::GameState::PLAYING )
-                sudoku_board.set_game_state( SudokuBoard::GameState::STOP );
+                sudoku_board->set_game_state( SudokuBoard::GameState::STOP );
             else if ( state == SudokuBoard::GameState::STOP )
-                sudoku_board.set_game_state( SudokuBoard::GameState::PLAYING );
+                sudoku_board->set_game_state( SudokuBoard::GameState::PLAYING );
 
             //other state ignore
             return true;
         }
     );
-    main_grid.attach( play_status_button , 12 , 10 , 6 , 2 );
 
-    window.add( main_grid );
-    window.show_all();
-
-    Glib::signal_timeout().connect_seconds( 
-        [ &sudoku_board , &play_status_button ]()
+    Glib::signal_timeout().connect_seconds(
+        [ sudoku_board , play_status_button ]()
         {
-            play_status_button.set_label( sudoku_board.dump_play_status() );
+            play_status_button->set_label( sudoku_board->dump_play_time() );
             return true;
         },
         1 
     );
 
-    return app->run( window );
+    window->show_all();
+    return app->run( *window );
 }
