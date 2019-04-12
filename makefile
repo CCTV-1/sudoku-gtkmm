@@ -3,7 +3,12 @@ JANSSON_FLAGS=$(shell pkg-config --cflags --libs jansson)
 GTKMM_FLAGS=$(shell pkg-config --cflags --libs gtkmm-3.0)
 
 CC++ =g++
-CPP_OPTION=-Wall -Wextra -Wpedantic -std=gnu++17 -O3 -m64
+ifndef DEBUG
+	CPP_OPTION=-Wall -Wextra -Wpedantic -std=gnu++17 -O3 -m64
+endif
+ifdef DEBUG
+	CPP_OPTION=-Wall -Wextra -Wpedantic -std=gnu++17 -O0 -g3 -pg -m64
+endif
 
 sudoku : src/main.cpp sudoku.o dancinglinks.o
 	$(CC++) src/main.cpp sudoku.o dancinglinks.o $(CPP_OPTION) $(CURL_FLAGS) $(JANSSON_FLAGS) $(GTKMM_FLAGS) -o sudoku
