@@ -1,13 +1,13 @@
 CURL_FLAGS=$(shell pkg-config --cflags --libs libcurl)
 JANSSON_FLAGS=$(shell pkg-config --cflags --libs jansson)
 GTKMM_FLAGS=$(shell pkg-config --cflags --libs gtkmm-3.0)
-
+CPP_OPTION=-Wall -Wextra -Wpedantic -std=gnu++17 -m64 -lstdc++fs
 CC++ =g++
 ifndef DEBUG
-	CPP_OPTION=-Wall -Wextra -Wpedantic -std=gnu++17 -O3 -m64
+	CPP_OPTION+=-O3
 endif
 ifdef DEBUG
-	CPP_OPTION=-Wall -Wextra -Wpedantic -std=gnu++17 -O0 -g3 -pg -m64
+	CPP_OPTION+=-O0 -g3 -pg
 endif
 
 sudoku : src/main.cpp sudoku.o dancinglinks.o
