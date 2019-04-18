@@ -71,6 +71,10 @@ bool fill_check( const puzzle_t& puzzle , std::size_t x , std::size_t y ) noexce
 //not usage solution check
 bool check_puzzle( const puzzle_t& puzzle ) noexcept( false );
 
+//9*9 sudoku argument format:"008000402000320780702506000003050004009740200006200000000000500900005600620000190"
+//10+ * 10+:element '01'... or '11'...(if implement)
+puzzle_t serialization_puzzle( std::string puzzle_string ) noexcept( false );
+
 std::string dump_puzzle( const puzzle_t& puzzle ) noexcept( false );
 
 std::shared_future <puzzle_t> get_network_puzzle( enum SUDOKU_LEVEL level ) noexcept( false );

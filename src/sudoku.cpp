@@ -688,6 +688,25 @@ std::string dump_puzzle( const puzzle_t& puzzle ) noexcept( false )
     return result;
 }
 
+puzzle_t serialization_puzzle( std::string puzzle_string ) noexcept( false )
+{
+    std::string except_message( __func__ );
+    puzzle_t puzzle = {};
+    if ( puzzle_string.size() != SUDOKU_SIZE*SUDOKU_SIZE )
+    {
+        throw std::invalid_argument( except_message + " argument content:'" + puzzle_string + "' format invalid" );
+    }
+    for( cell_t i = 0 ; i < SUDOKU_SIZE ; i++ )
+    {
+        for ( cell_t j = 0 ; j < SUDOKU_SIZE ; j++ )
+        {
+            puzzle[i][j] = puzzle_string[ i*SUDOKU_SIZE + j ] - '0';
+        }
+    }
+
+    return puzzle;
+}
+
 std::shared_future <puzzle_t> get_network_puzzle( SUDOKU_LEVEL level ) noexcept( false )
 {
     std::packaged_task<puzzle_t()> task( std::bind( get_puzzle_callback , level ) );
