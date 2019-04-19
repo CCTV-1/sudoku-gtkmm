@@ -208,6 +208,7 @@ Sudoku::Sudoku( puzzle_t puzzle , SUDOKU_LEVEL level ) noexcept( false )
         except_message += ":puzzle illegal";
         throw std::invalid_argument( except_message );
     }
+    this->autoupdate = false;
     this->level = level;
     this->puzzle = puzzle;
     //std::map operator[],element unset default value:0(false)
@@ -222,6 +223,7 @@ Sudoku::Sudoku( SUDOKU_LEVEL level ) noexcept( false ) :
 }
 
 Sudoku::Sudoku( const Sudoku& sudoku ):
+    autoupdate( sudoku.autoupdate ),
     level( sudoku.level ),
     puzzle( sudoku.puzzle ),
     answer( sudoku.answer ),
@@ -232,6 +234,7 @@ Sudoku::Sudoku( const Sudoku& sudoku ):
 
 Sudoku::Sudoku( Sudoku&& sudoku )
 {
+    this->autoupdate = std::move( sudoku.autoupdate_candidate );
     this->level = std::move( sudoku.level );
     this->puzzle = std::move( sudoku.puzzle );
     this->answer = std::move( sudoku.answer );
@@ -240,6 +243,7 @@ Sudoku::Sudoku( Sudoku&& sudoku )
 
 Sudoku& Sudoku::operator=( const Sudoku& sudoku )
 {
+    this->autoupdate = sudoku.autoupdate;
     this->level = sudoku.level;
     this->puzzle = sudoku.puzzle;
     this->answer = sudoku.answer;
@@ -251,12 +255,18 @@ Sudoku& Sudoku::operator=( Sudoku&& sudoku )
 {
     if ( this != &sudoku )
     {
+        this->autoupdate = std::move( sudoku.autoupdate );
         this->level = std::move( sudoku.level );
         this->puzzle = std::move( sudoku.puzzle );
         this->answer = std::move( sudoku.answer );
         this->candidates = std::move( sudoku.candidates );
     }
     return *this;
+}
+
+void Sudoku::autoupdate_candidate( bool flags ) noexcept( true )
+{
+    this->autoupdate = flags;
 }
 
 void Sudoku::fill_answer( std::size_t x , std::size_t y , std::size_t value ) noexcept( false )
@@ -305,7 +315,8 @@ void Sudoku::fill_answer( std::size_t x , std::size_t y , std::size_t value ) no
    //value == 0 erase operator set this->answer[pos] = false
    //value != 0 fill operator set this->answer[pos] = true
     this->answer[pos] = bool(value);
-    //update_candidates( this->candidates , this->puzzle , x , y );
+    if ( this->autoupdate )
+        update_candidates( this->candidates , this->puzzle , x , y );
 }
 
 void Sudoku::erase_answer( std::size_t x , std::size_t y ) noexcept( false )

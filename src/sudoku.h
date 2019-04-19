@@ -38,6 +38,8 @@ class Sudoku
         Sudoku& operator=( Sudoku&& sudoku );
         ~Sudoku() = default;
 
+        void autoupdate_candidate( bool flags ) noexcept( true );
+
         void fill_answer( std::size_t x , std::size_t y , std::size_t value ) noexcept( false );
 
         void erase_answer( std::size_t x , std::size_t y ) noexcept( false );
@@ -57,6 +59,7 @@ class Sudoku
         const puzzle_t& get_puzzle( void ) const noexcept( true );
 
     private:
+        bool autoupdate;
         SUDOKU_LEVEL level;
         puzzle_t puzzle;
         answer_t answer;
