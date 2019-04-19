@@ -234,7 +234,7 @@ Sudoku::Sudoku( const Sudoku& sudoku ):
 
 Sudoku::Sudoku( Sudoku&& sudoku )
 {
-    this->autoupdate = std::move( sudoku.autoupdate_candidate );
+    this->autoupdate = std::move( sudoku.autoupdate );
     this->level = std::move( sudoku.level );
     this->puzzle = std::move( sudoku.puzzle );
     this->answer = std::move( sudoku.answer );
