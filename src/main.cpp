@@ -4,6 +4,7 @@
 #include <chrono>
 #include <deque>
 #include <exception>
+#include <filesystem>
 #include <future>
 #include <string>
 #include <utility>
@@ -12,12 +13,17 @@
 #include <glibmm/main.h>
 #include <glibmm/timer.h>
 #include <gtkmm/application.h>
+#include <gtkmm/checkmenuitem.h>
+#include <gtkmm/clipboard.h>
+#include <gtkmm/button.h>
 #include <gtkmm/builder.h>
 #include <gtkmm/drawingarea.h>
 #include <gtkmm/eventbox.h>
+#include <gtkmm/filechooserdialog.h>
 #include <gtkmm/grid.h>
 #include <gtkmm/headerbar.h>
 #include <gtkmm/label.h>
+#include <gtkmm/menuitem.h>
 #include <gtkmm/popover.h>
 #include <gtkmm/window.h>
 #include <gtkmm/window.h>
@@ -27,16 +33,51 @@
 constexpr SUDOKU_LEVEL NEW_GAME_LEVEL = SUDOKU_LEVEL::MEDIUM;
 static const Glib::ustring UI_FILE( "./resource/sudoku.ui" );
 
-static const Gdk::RGBA BOARD_BACKGROUD_RGBA( Glib::ustring( "rgba( 255 , 255 , 255 , 1.0 )" ) );
-static const Gdk::RGBA PUZZLE_NUMBER_RGBA  ( Glib::ustring( "rgba(   0 ,   0 ,   0 , 1.0 )" ) );
-static const Gdk::RGBA ANSWER_NUMBER_RGBA  ( Glib::ustring( "rgba(  74 , 144 , 226 , 1.0 )" ) );
-static const Gdk::RGBA SELECT_ROW_RGBA     ( Glib::ustring( "rgba( 226 , 231 , 237 , 1.0 )" ) );
-static const Gdk::RGBA SELECT_CELL_RGBA    ( Glib::ustring( "rgba( 187 , 222 , 251 , 1.0 )" ) );
-static const Gdk::RGBA SELECT_NUMBER_RGBA  ( Glib::ustring( "rgba(   1 ,   2 , 255 , 1.0 )" ) );
+static Gdk::RGBA BOARD_BACKGROUD_RGBA( Glib::ustring( "rgba( 255 , 255 , 255 , 1.0 )" ) );
+static Gdk::RGBA PUZZLE_NUMBER_RGBA  ( Glib::ustring( "rgba(   0 ,   0 ,   0 , 1.0 )" ) );
+static Gdk::RGBA ANSWER_NUMBER_RGBA  ( Glib::ustring( "rgba(  74 , 144 , 226 , 1.0 )" ) );
+static Gdk::RGBA SELECT_ROW_RGBA     ( Glib::ustring( "rgba( 226 , 231 , 237 , 1.0 )" ) );
+static Gdk::RGBA SELECT_CELL_RGBA    ( Glib::ustring( "rgba( 187 , 222 , 251 , 1.0 )" ) );
+static Gdk::RGBA SELECT_NUMBER_RGBA  ( Glib::ustring( "rgba(   1 ,   2 , 255 , 1.0 )" ) );
+static Gdk::RGBA BUTTON_BORDER_RGBA  ( Glib::ustring( "rgba( 190 , 198 , 212 , 1.0 )" ) );
 
-static const Gdk::RGBA BUTTON_BORDER_RGBA  ( Glib::ustring( "rgba( 190 , 198 , 212 , 1.0 )" ) );
+enum class Themes:std::uint32_t
+{
+    LIGHT,
+    DARK
+};
 
-static inline void set_rgba( const Cairo::RefPtr<Cairo::Context> & cairo_context , const Gdk::RGBA& rgba )
+static void set_theme( const Themes theme )
+{
+    switch ( theme )
+    {
+        default:
+        case Themes::LIGHT:
+        {
+            BOARD_BACKGROUD_RGBA.set( Glib::ustring( "rgba( 255 , 255 , 255 , 1.0 )" ) );
+            PUZZLE_NUMBER_RGBA.set( Glib::ustring( "rgba(   0 ,   0 ,   0 , 1.0 )" ) );
+            ANSWER_NUMBER_RGBA.set( Glib::ustring( "rgba(  74 , 144 , 226 , 1.0 )" ) );
+            SELECT_ROW_RGBA.set( Glib::ustring( "rgba( 226 , 231 , 237 , 1.0 )" ) );
+            SELECT_CELL_RGBA.set( Glib::ustring( "rgba( 187 , 222 , 251 , 1.0 )" ) );
+            SELECT_NUMBER_RGBA.set( Glib::ustring( "rgba(   1 ,   2 , 255 , 1.0 )" ) );
+            BUTTON_BORDER_RGBA.set( Glib::ustring( "rgba( 190 , 198 , 212 , 1.0 )" ) );
+            break;
+        }
+        case Themes::DARK:
+        {
+            BOARD_BACKGROUD_RGBA.set( Glib::ustring( "rgba( 45 , 45 , 45 , 1.0 )" ) );
+            PUZZLE_NUMBER_RGBA.set( Glib::ustring( "rgba( 171 , 171 , 171 , 1.0 )" ) );
+            ANSWER_NUMBER_RGBA.set( Glib::ustring( "rgba( 255 , 255 , 255 , 1.0 )" ) );
+            SELECT_ROW_RGBA.set( Glib::ustring( "rgba( 141 ,  38 ,  99 , 1.0 )" ) );
+            SELECT_CELL_RGBA.set( Glib::ustring( "rgba(  86 , 187 , 235 , 1.0 )" ) );
+            SELECT_NUMBER_RGBA.set( Glib::ustring( "rgba(  44 , 243 , 151 , 1.0 )" ) );
+            BUTTON_BORDER_RGBA.set( Glib::ustring( "rgba( 241 , 224 ,  10 , 1.0 )" ) );
+            break;
+        }
+    }
+}
+
+static void set_rgba( const Cairo::RefPtr<Cairo::Context> & cairo_context , const Gdk::RGBA& rgba )
 {
     cairo_context->set_source_rgba( rgba.get_red() , rgba.get_green() , rgba.get_blue() , rgba.get_alpha() );
 }
@@ -53,7 +94,7 @@ class SudokuBoard : public Gtk::DrawingArea
         enum class GameState:std::uint32_t
         {
             PLAYING = 0,
-            STOP,
+            PAUSE,
             VIEW_SOLUTION,
             LOADING_NEW_GAME
         };
@@ -112,6 +153,10 @@ class SudokuBoard : public Gtk::DrawingArea
             this->column_index_size = 5*this->font_size;
             this->board_size = 2*( this->column_index_size ) + 9*( this->grid_size );
             this->set_size_request( board_size , board_size );
+
+            this->operator_queues = { {} };
+            //undo operator sentinel
+            this->operator_iterator = this->operator_queues.begin();
         }
         ~SudokuBoard()
         {
@@ -134,7 +179,8 @@ class SudokuBoard : public Gtk::DrawingArea
                             Sudoku new_sudoku( puzzle_future.get() , level );
                             this->game = new_sudoku;
                             this->solution = game.get_solution(false)[0];
-                            this->operator_queues.clear();
+                            this->operator_queues = { {} };
+                            this->operator_iterator = this->operator_queues.begin();
                             this->select_cell = false;
                             this->grid_x = 0;
                             this->grid_y = 0;
@@ -159,6 +205,35 @@ class SudokuBoard : public Gtk::DrawingArea
             );
         }
 
+        void new_game( Glib::ustring puzzle_string )
+        {
+            try
+            {
+                Sudoku new_sudoku( serialization_puzzle( puzzle_string ) );
+                this->game = new_sudoku;
+            }
+            catch( const std::exception& e )
+            {
+                g_log( __func__ , G_LOG_LEVEL_MESSAGE , e.what() );
+                return ;
+            }
+            this->solution = game.get_solution(false)[0];
+            this->operator_queues = { {} };
+            this->operator_iterator = this->operator_queues.begin();
+            this->select_cell = false;
+            this->grid_x = 0;
+            this->grid_y = 0;
+            this->prev_time = 0;
+            this->timer.reset();
+            this->set_game_state( GameState::PLAYING );
+            this->queue_draw();
+        }
+
+        void auto_update_candidate( bool flags )
+        {
+            this->game.autoupdate_candidate( flags );
+        }
+
         GameState get_game_state( void )
         {
             return this->state;
@@ -172,7 +247,7 @@ class SudokuBoard : public Gtk::DrawingArea
                 this->prev_time += this->timer.elapsed();
                 this->timer.start();
             }
-            else if ( state == GameState::STOP )
+            else if ( state == GameState::PAUSE )
             {
                 this->timer.stop();
             }
@@ -203,6 +278,9 @@ class SudokuBoard : public Gtk::DrawingArea
             if ( this->state != GameState::PLAYING )
                 return ;
 
+            //keep undo operator sentinel element
+            this->operator_queues.resize( this->operator_iterator - this->operator_queues.begin() + 1 );
+
             switch ( this->fill_mode )
             {
                 case FillMode::ANSWER:
@@ -213,12 +291,12 @@ class SudokuBoard : public Gtk::DrawingArea
                         if ( value == old_value )
                         {
                             this->game.erase_answer( this->grid_x , this->grid_y );
-                            this->operator_queues.push_front( { OperatorType::ERASE_ANSWER , { this->grid_x , this->grid_y , value } } );
+                            this->operator_queues.push_back( { OperatorType::ERASE_ANSWER , { this->grid_x , this->grid_y , value } } );
                         }
                         else
                         {
                             this->game.fill_answer( this->grid_x , this->grid_y , value );
-                            this->operator_queues.push_front( { OperatorType::FILL_ANSWER , { this->grid_x , this->grid_y , old_value } } );
+                            this->operator_queues.push_back( { OperatorType::FILL_ANSWER , { this->grid_x , this->grid_y , value } } );
                         }
                     }
                     catch( const std::exception& e )
@@ -233,12 +311,12 @@ class SudokuBoard : public Gtk::DrawingArea
                     if ( std::find( candidates.begin() , candidates.end() , value ) == candidates.end() )
                     {
                         this->game.fill_candidates( this->grid_x , this->grid_y , { value } );
-                        this->operator_queues.push_front( { OperatorType::FILL_CANDIDATE , { this->grid_x , this->grid_y , value } } );
+                        this->operator_queues.push_back( { OperatorType::FILL_CANDIDATE , { this->grid_x , this->grid_y , value } } );
                     }
                     else
                     {
                         this->game.erase_candidates( this->grid_x , this->grid_y , { value } );
-                        this->operator_queues.push_front( { OperatorType::ERASE_CANDIDATE , { this->grid_x , this->grid_y , value } } );
+                        this->operator_queues.push_back( { OperatorType::ERASE_CANDIDATE , { this->grid_x , this->grid_y , value } } );
                     }
                     break;
                 }
@@ -246,22 +324,23 @@ class SudokuBoard : public Gtk::DrawingArea
                     break;
             }
 
+            this->operator_iterator++;
             this->queue_draw();
         }
 
         void undo_fill( void )
         {
-            if ( this->operator_queues.empty() )
+            if ( this->operator_queues.begin() == this->operator_iterator )
                 return ;
-            auto operator_queue = this->operator_queues.front();
+            auto operator_queue = *( this->operator_iterator );
             switch ( operator_queue.first )
             {
                 case OperatorType::FILL_ANSWER:
                 {
                     if ( operator_queue.second.value != 0 )
-                        this->game.fill_answer( operator_queue.second.x , operator_queue.second.y , operator_queue.second.value );
-                    else
                         this->game.erase_answer( operator_queue.second.x , operator_queue.second.y );
+                    else
+                        this->game.fill_answer( operator_queue.second.x , operator_queue.second.y , operator_queue.second.value );
                     break;
                 }
                 case OperatorType::FILL_CANDIDATE:
@@ -276,27 +355,78 @@ class SudokuBoard : public Gtk::DrawingArea
                 default:
                     break;
             }
-            this->operator_queues.pop_front();
+            
+            this->operator_iterator--;
+            this->queue_draw();
+        }
+
+        void redo_fill( void )
+        {
+            if ( this->operator_queues.end() == this->operator_iterator )
+                return ;
+            this->operator_iterator++;
+            if ( this->operator_queues.end() == this->operator_iterator )
+            {
+                this->operator_iterator--;
+                return ;
+            }
+            auto operator_queue = *( this->operator_iterator );
+            switch ( operator_queue.first )
+            {
+                case OperatorType::FILL_ANSWER:
+                {
+                    if ( operator_queue.second.value != 0 )
+                        this->game.fill_answer( operator_queue.second.x , operator_queue.second.y , operator_queue.second.value );
+                    else
+                        this->game.erase_answer( operator_queue.second.x , operator_queue.second.y );
+                    break;
+                }
+                case OperatorType::FILL_CANDIDATE:
+                    this->game.fill_candidates( operator_queue.second.x , operator_queue.second.y , { operator_queue.second.value } );
+                    break;
+                case OperatorType::ERASE_ANSWER:
+                    this->game.erase_answer( operator_queue.second.x , operator_queue.second.y );
+                    break;
+                case OperatorType::ERASE_CANDIDATE:
+                    this->game.erase_candidates( operator_queue.second.x , operator_queue.second.y , { operator_queue.second.value } );
+                    break;
+                default:
+                    break;
+            }
+
             this->queue_draw();
         }
 
         Glib::ustring dump_play_time( void )
         {
             std::uint32_t playing_time = this->get_play_time();
-            Glib::ustring status_str;
-
-            status_str += "\nPlay Time:\t\t";
             Glib::ustring time_string( std::to_string( playing_time/3600 ) );
             time_string += ":" + std::to_string( playing_time/60 );
             time_string += ":" + std::to_string( playing_time%60 );
-            status_str += time_string;
-
-            return status_str;
+            return time_string;
         }
 
-        void print_puzzle( PrintType type = PrintType::PNG )
+        bool can_fill( double x , double y )
         {
-            Glib::ustring filename;
+            if ( this->get_game_state() != GameState::PLAYING )
+                return false;
+            if ( ( x < this->column_index_size ) || ( x > this->column_index_size + 9*( this->grid_size ) ) )
+                return false;
+            if ( ( y < this->row_index_size ) || ( y > this->row_index_size + 9*( this->grid_size ) ) )
+                return false;
+            cell_t grid_x = ( y - this->row_index_size )/this->grid_size;
+            cell_t grid_y = ( x - this->column_index_size )/this->grid_size;
+            
+            return ( ( this->puzzle[grid_x][grid_y] == 0 ) || ( this->game.is_answer( grid_x , grid_y ) ) );
+        }
+
+        Glib::ustring dump_sudoku( void )
+        {
+            return dump_puzzle( this->puzzle );
+        }
+
+        void print_puzzle( Glib::ustring filename = "puzzle.png" ,  PrintType type = PrintType::PNG )
+        {
             auto allocation = this->get_allocation();
     
             Cairo::RefPtr<Cairo::Surface> surface;
@@ -304,25 +434,21 @@ class SudokuBoard : public Gtk::DrawingArea
             {
                 case PrintType::PNG:
                 {
-                    filename = "puzzle.png";
                     surface = Cairo::ImageSurface::create( Cairo::FORMAT_ARGB32 , allocation.get_width() , allocation.get_height() );
                     break;
                 }
                 case PrintType::PDF:
                 {
-                    filename = "puzzle.pdf";
                     surface = Cairo::PdfSurface::create( filename , allocation.get_width() , allocation.get_height() );
                     break;
                 }
                 case PrintType::PS:
                 {
-                    filename = "puzzle.ps";
                     surface = Cairo::PsSurface::create( filename , allocation.get_width() , allocation.get_height() );
                     break;
                 }
                 case PrintType::SVG:
                 {
-                    filename = "puzzle.svg";
                     surface = Cairo::SvgSurface::create( filename , allocation.get_width() , allocation.get_height() );
                     break;
                 }
@@ -372,8 +498,8 @@ class SudokuBoard : public Gtk::DrawingArea
             {
                 switch ( this->state )
                 {
-                    case GameState::STOP:
-                        return std::string( "game stop,disable board view" );
+                    case GameState::PAUSE:
+                        return std::string( "game pause,disable board view" );
                     case GameState::LOADING_NEW_GAME:
                         return std::string( "loading puzzle,not available board view" );
                     //playing,view solution don't need to string
@@ -381,7 +507,7 @@ class SudokuBoard : public Gtk::DrawingArea
                         return std::string( "unknow state" );
                 }
             };
-            if ( ( this->state == GameState::STOP ) || ( this->state == GameState::LOADING_NEW_GAME ) )
+            if ( ( this->state == GameState::PAUSE ) || ( this->state == GameState::LOADING_NEW_GAME ) )
             {
                 set_rgba( cairo_context , PUZZLE_NUMBER_RGBA );
                 this->layout->set_text( state_to_string() );
@@ -500,32 +626,16 @@ class SudokuBoard : public Gtk::DrawingArea
         {
             //other game state disable button event
             if ( ( this->state != GameState::PLAYING ) && ( this->state != GameState::VIEW_SOLUTION ) )
-                return true;
+                return false;
             //ignore double-clicked and three-clicked(left and mid button)
-            if ( event->type == GDK_2BUTTON_PRESS )
-                return true;
-            if ( event->type == GDK_3BUTTON_PRESS )
-            {
-                //view solution switch
-                if ( event->button == 3 )
-                {
-                    if ( this->state == GameState::VIEW_SOLUTION )
-                    {
-                        this->set_game_state( GameState::PLAYING );
-                    }
-                    //only GameState::PlAYING
-                    else
-                    {
-                        this->set_game_state( GameState::VIEW_SOLUTION );
-                    }
-                    
-                }
-                return true;
-            }
+            if ( event->type == GdkEventType::GDK_2BUTTON_PRESS )
+                return false;
+            if ( event->type == GdkEventType::GDK_3BUTTON_PRESS )
+                return false;
             if ( ( event->x < this->column_index_size ) || ( event->x > this->column_index_size + 9*( this->grid_size ) ) )
-                return true;
+                return false;
             if ( ( event->y < this->row_index_size ) || ( event->y > this->row_index_size + 9*( this->grid_size ) ) )
-                return true;
+                return false;
             std::size_t x = event->x;
             std::size_t y = event->y;
             this->grid_x = ( y - this->row_index_size )/this->grid_size;
@@ -533,7 +643,7 @@ class SudokuBoard : public Gtk::DrawingArea
             this->select_cell = true;
             this->queue_draw();
 
-            return true;
+            return false;
         }
 
     private:
@@ -583,6 +693,7 @@ class SudokuBoard : public Gtk::DrawingArea
 
         typedef std::deque< std::pair< OperatorType , OperatorValue > > operator_t;
         operator_t operator_queues;
+        operator_t::iterator operator_iterator;
 
         void draw_background_color( const Cairo::RefPtr<Cairo::Context> & cairo_context )
         {
@@ -803,6 +914,145 @@ int main( void )
     builder->get_widget_derived( "SudokuBoard" , sudoku_board );
     sudoku_board->new_game( NEW_GAME_LEVEL );
 
+    //bind setting menu buttons signal handler
+
+    Gtk::CheckMenuItem * fill_mode;
+    builder->get_widget( "FillMode" , fill_mode );
+    fill_mode->signal_toggled().connect(
+        [ sudoku_board , fill_mode ]()
+        {
+            if ( fill_mode->get_active() )
+            {
+                sudoku_board->set_fill_mode( SudokuBoard::FillMode::ANSWER );
+                fill_mode->set_label( "FillAnswer" );
+            }
+            else
+            {
+                sudoku_board->set_fill_mode( SudokuBoard::FillMode::CANDIDATE );
+                fill_mode->set_label( "FillCandidate" );
+            }
+        }
+    );
+
+    Gtk::CheckMenuItem * auto_update;
+    builder->get_widget( "AutoUpdate" , auto_update );
+    auto_update->signal_toggled().connect(
+        [ sudoku_board , auto_update ]()
+        {
+            sudoku_board->auto_update_candidate( auto_update->get_active() );
+        }
+    );
+
+    Gtk::MenuItem * light_theme;
+    builder->get_widget( "LightTheme" , light_theme );
+    light_theme->signal_activate().connect( 
+        [ sudoku_board ]()
+        {
+            set_theme( Themes::LIGHT );
+            sudoku_board->queue_draw();
+        }
+    );
+
+    Gtk::MenuItem * dark_theme;
+    builder->get_widget( "DarkTheme" , dark_theme );
+    dark_theme->signal_activate().connect(
+        [ sudoku_board ]()
+        {
+            set_theme( Themes::DARK );
+            sudoku_board->queue_draw();
+        }
+    );
+
+    Gtk::CheckMenuItem * view_solution;
+    builder->get_widget( "ViewSolution" , view_solution );
+    view_solution->signal_toggled().connect(
+        [ sudoku_board , view_solution ]()
+        {
+            auto state = sudoku_board->get_game_state();
+            if ( ( state != SudokuBoard::GameState::PLAYING ) && ( state != SudokuBoard::GameState::VIEW_SOLUTION ) )
+                return ;
+            if ( view_solution->get_active() )
+            {
+                sudoku_board->set_game_state( SudokuBoard::GameState::VIEW_SOLUTION );
+            }
+            else
+            {
+                sudoku_board->set_game_state( SudokuBoard::GameState::PLAYING );
+            }
+        }
+    );
+
+    Gtk::MenuItem * import_game;
+    builder->get_widget( "ImportGame" , import_game );
+    import_game->signal_activate().connect(
+        [ sudoku_board ]()
+        {
+            auto clipboard = Gtk::Clipboard::get();
+            clipboard->request_text( sigc::mem_fun<Glib::ustring>( sudoku_board , &SudokuBoard::new_game ) );
+        }
+    );
+
+    Gtk::MenuItem * export_game;
+    builder->get_widget( "ExportGame" , export_game );
+    export_game->signal_activate().connect(
+        [ sudoku_board ]()
+        {
+            auto clipboard = Gtk::Clipboard::get();
+            clipboard->set_text( sudoku_board->dump_sudoku() );
+        }
+    );
+
+    Gtk::MenuItem * print_sudoku;
+    builder->get_widget( "PrintSudoku" , print_sudoku );
+    print_sudoku->signal_activate().connect(
+        [ sudoku_board ]()
+        {
+            Gtk::FileChooserDialog chooser( "select file" , Gtk::FileChooserAction::FILE_CHOOSER_ACTION_SAVE );
+            auto filter = Gtk::FileFilter::create();
+            filter->add_pattern( "*.[Pp][Nn][Gg]" );
+            filter->add_pattern( "*.[Pp][Ss]" );
+            filter->add_pattern( "*.[Ss][Vv][Gg]" );
+            filter->add_pattern( "*.[Pp][Dd][Ff]" );
+            filter->set_name( "png/svg/ps/pdf" );
+            chooser.add_filter( filter );
+            chooser.add_button( "OK" , 0 );
+            chooser.run();
+            std::filesystem::path filename( chooser.get_filename() );
+            SudokuBoard::PrintType type = SudokuBoard::PrintType::PNG;
+            Glib::ustring extension_string = filename.extension().string();
+            extension_string = extension_string.lowercase();
+            if ( extension_string == ".png" )
+            {
+                type = SudokuBoard::PrintType::PNG;
+            }
+            else if ( extension_string == ".ps" )
+            {
+                type = SudokuBoard::PrintType::PS;
+            }
+            else if ( extension_string == ".svg" )
+            {
+                type = SudokuBoard::PrintType::SVG;
+            }
+            else if ( extension_string == ".pdf" )
+            {
+                type = SudokuBoard::PrintType::PDF;
+            }
+
+            sudoku_board->print_puzzle( filename.string() , type );
+        }
+    );
+
+    Gtk::MenuItem * exit_game;
+    builder->get_widget( "ExitGame" , exit_game );
+    exit_game->signal_activate().connect(
+        [ app ]()
+        {
+            app->quit();
+        }
+    );
+
+    //bind popover menus signal handler
+
     Gtk::Popover * level_menu;
     builder->get_widget( "LevelMenu" , level_menu );
     Gtk::Grid * level_grid;
@@ -816,7 +1066,7 @@ int main( void )
             [ sudoku_board , level_menu , headbar , i ]( GdkEventButton * event )
             {
                 //ignore double-clicked and three-clicked 
-                if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
+                if ( ( event->type == GdkEventType::GDK_2BUTTON_PRESS ) || ( event->type == GdkEventType::GDK_3BUTTON_PRESS ) )
                     return true;
 
                 level_menu->popdown();
@@ -829,112 +1079,114 @@ int main( void )
     }
     level_grid->show_all();
 
-    ControlButton * new_game_button;
-    builder->get_widget_derived( "NewGame" , new_game_button , "New Game" , "Ubuntu Mono 28" );
-    new_game_button->signal_button_press_event().connect(
-        [ level_menu ]( GdkEventButton * event )
+    Gtk::Popover * fill_menu;
+    builder->get_widget( "FillMenu" , fill_menu );
+    Gtk::Grid * fill_grid;
+    builder->get_widget( "FillGrid" , fill_grid );
+    fill_grid->show_all();
+    sudoku_board->signal_button_press_event().connect(
+        [ sudoku_board , fill_menu ]( GdkEventButton * event )
         {
             //ignore double-clicked and three-clicked 
-            if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
-                return true;
+            if ( ( event->type == GdkEventType::GDK_2BUTTON_PRESS ) || ( event->type == GdkEventType::GDK_3BUTTON_PRESS ) )
+                return false;
+            
+            if ( fill_menu->is_visible() )
+            {
+                fill_menu->popdown();
+                return false;
+            }
 
-            Gtk::Widget * relative_widget = level_menu->get_relative_to();
-            level_menu->set_size_request( relative_widget->get_allocated_width() );
-            level_menu->set_pointing_to( { relative_widget->get_allocated_width()/2 , relative_widget->get_allocated_height()/2 , 0 , 0 } );
-            level_menu->popup();
+            if ( sudoku_board->can_fill( event->x , event->y ) == false )
+                return false;
 
-            return true;
-        }
+            fill_menu->set_pointing_to( { static_cast<gint>( event->x ) , static_cast<gint>( event->y ) , 0 , 0 } );
+            fill_menu->popup();
+
+            //call default signal handler
+            return false;
+        },
+        true
     );
-
     for( cell_t i = 0 ; i < SUDOKU_SIZE ; i++ )
     {
         ControlButton * fill_button;
-        builder->get_widget_derived( "Fill" + std::to_string( i + 1 ) , fill_button , std::to_string( i + 1 ) );
+        builder->get_widget_derived( "Fill" + std::to_string( i + 1 ) , fill_button , std::to_string( i + 1 ) , "Ubuntu Mono 14" );
         fill_button->signal_button_press_event().connect(
-            [ sudoku_board , i ]( GdkEventButton * event )
+            [ sudoku_board , fill_menu , i ]( GdkEventButton * event )
             {
                 //ignore double-clicked and three-clicked 
-                if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
+                if ( ( event->type == GdkEventType::GDK_2BUTTON_PRESS ) || ( event->type == GdkEventType::GDK_3BUTTON_PRESS ) )
                     return true;
 
                 sudoku_board->do_fill( i + 1 );
+                fill_menu->popdown();
                 return true;
             }
         );
     }
 
-    ControlButton * fill_mode;
-    builder->get_widget_derived( "FillMode" , fill_mode , "Fill Mode:Answer" , "Ubuntu Mono 14" );
-    fill_mode->signal_button_press_event().connect(
-        [ sudoku_board , fill_mode ]( GdkEventButton * event )
+    //bind toolbar buttons signal handler
+
+    Gtk::Button * new_game_button;
+    builder->get_widget( "NewGame" , new_game_button );
+    new_game_button->signal_clicked().connect(
+        [ level_menu ]()
         {
-            //ignore double-clicked and three-clicked 
-            if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
-                return true;
-
-            SudokuBoard::FillMode old_mode = sudoku_board->get_fill_mode();
-
-            switch ( old_mode )
-            {
-                case SudokuBoard::FillMode::ANSWER:
-                {
-                    sudoku_board->set_fill_mode( SudokuBoard::FillMode::CANDIDATE );
-                    fill_mode->set_label( "Fill Mode:Candidate" );
-                    break;
-                }
-                case SudokuBoard::FillMode::CANDIDATE:
-                {
-                    sudoku_board->set_fill_mode( SudokuBoard::FillMode::ANSWER );
-                    fill_mode->set_label( "Fill Mode:Answer" );
-                    break;
-                }
-                default:
-                    break;
-            }
-
-            return true;
+            Gtk::Widget * relative_widget = level_menu->get_relative_to();
+            level_menu->set_size_request( relative_widget->get_allocated_width() );
+            level_menu->set_pointing_to( { relative_widget->get_allocated_width()/2 , relative_widget->get_allocated_height()/2 , 0 , 0 } );
+            level_menu->popup();
         }
     );
 
-    ControlButton * undo_button;
-    builder->get_widget_derived( "Undo" , undo_button , "Undo" , "Ubuntu Mono 14" );
-    undo_button->signal_button_press_event().connect(
-        [ sudoku_board ]( GdkEventButton * event )
+    Gtk::Button * undo_button;
+    builder->get_widget( "Undo" , undo_button );
+    undo_button->signal_clicked().connect(
+        [ sudoku_board ]()
         {
-            //ignore double-clicked and three-clicked 
-            if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
-                return true;
             sudoku_board->undo_fill();
-
-            return true;
         }
     );
 
-    ControlButton * play_status_button;
-    builder->get_widget_derived( "ChangePlayState" , play_status_button , sudoku_board->dump_play_time() , "Ubuntu Mono 14" );
-    play_status_button->signal_button_press_event().connect(
-        [ sudoku_board ]( GdkEventButton * event )
+    Gtk::Button * redo_button;
+    builder->get_widget( "Redo" , redo_button );
+    redo_button->signal_clicked().connect(
+        [ sudoku_board ]()
         {
-            //ignore double-clicked and three-clicked 
-            if ( ( event->type == GDK_2BUTTON_PRESS ) || ( event->type == GDK_3BUTTON_PRESS ) )
-                return true;
+            sudoku_board->redo_fill();
+        }
+    );
 
+    Gtk::Widget * playing_image;
+    builder->get_widget( "PlayingImage" , playing_image );
+    Gtk::Widget * pause_image;
+    builder->get_widget( "PauseImage" , pause_image );
+    Gtk::Button * play_status_button;
+    builder->get_widget( "ChangePlayState" , play_status_button );
+    play_status_button->signal_clicked().connect(
+        [ sudoku_board , play_status_button , playing_image , pause_image ]()
+        {
             SudokuBoard::GameState state = sudoku_board->get_game_state();
             if ( state == SudokuBoard::GameState::PLAYING )
-                sudoku_board->set_game_state( SudokuBoard::GameState::STOP );
-            else if ( state == SudokuBoard::GameState::STOP )
+            {
+                sudoku_board->set_game_state( SudokuBoard::GameState::PAUSE );
+                play_status_button->set_image( *playing_image );
+            }
+            else if ( state == SudokuBoard::GameState::PAUSE )
+            {
                 sudoku_board->set_game_state( SudokuBoard::GameState::PLAYING );
-
-            //other state ignore
-            return true;
+                play_status_button->set_image( *pause_image );
+            }
         }
     );
 
+    Gtk::Label * timer_label;
+    builder->get_widget( "TimerLabel" , timer_label );
     Glib::signal_timeout().connect_seconds(
-        [ sudoku_board , play_status_button ]()
+        [ sudoku_board , timer_label ]()
         {
-            play_status_button->set_label( sudoku_board->dump_play_time() );
+            timer_label->set_label( sudoku_board->dump_play_time() );
             return true;
         },
         1 
