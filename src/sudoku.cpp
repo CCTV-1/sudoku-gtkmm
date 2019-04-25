@@ -138,7 +138,7 @@ static puzzle_t get_puzzle_callback( SUDOKU_LEVEL level ) noexcept( false )
     std::shared_ptr<json_t> root( json_loads( json_buff , 0 , &error ) , json_decref );
     if ( root.get() == nullptr )
     {
-        except_message += "newtwork json:'";
+        except_message += "network json:'";
         except_message += json_buff;
         except_message += "' format does not meet expectations";
         throw std::invalid_argument( except_message );
@@ -157,7 +157,7 @@ static puzzle_t get_puzzle_callback( SUDOKU_LEVEL level ) noexcept( false )
     json_t * desc_array = json_object_get( root.get() , "desc" );
     if ( json_is_array( desc_array ) == false )
     {
-        except_message += "newtwork json:'";
+        except_message += "network json:'";
         std::shared_ptr<char> jsons( json_dumps( desc_array , JSON_INDENT( 4 ) ) , free );
         except_message += jsons.get();
         except_message += "' don't exist puzzle";
@@ -166,7 +166,7 @@ static puzzle_t get_puzzle_callback( SUDOKU_LEVEL level ) noexcept( false )
     json_t * puzzle_node = json_array_get( desc_array , 0 );
     if ( json_is_string( puzzle_node )  == false )
     {
-        except_message += "newtwork json:'";
+        except_message += "network json:'";
         std::shared_ptr<char> jsons( json_dumps( puzzle_node , JSON_INDENT( 4 ) ) , free );
         except_message += jsons.get();
         except_message += "' don't exist puzzle";
