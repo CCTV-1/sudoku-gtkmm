@@ -77,13 +77,21 @@ static class LibCurlInit
         }
 }_init_libcurl;
 
+typedef struct JsonBuff
+{
+    char * buff;
+    std::size_t current_size;
+}json_buff_t;
+
 static std::size_t get_json_callback( char * content , std::size_t size , std::size_t element_number , void * save_ptr )
 {
     std::size_t realsize = size*element_number;
-    char ** ptr = static_cast< char** >( save_ptr );
-    *ptr = static_cast<char *>( malloc( sizeof( char )*realsize + 1 ) );
-    memccpy( *ptr , content , 1 , realsize );
-    ( *ptr )[realsize] = '\0';
+    json_buff_t * ptr = static_cast<json_buff_t *>( save_ptr );
+    char * new_buff = static_cast<char *>( realloc( ptr->buff , ptr->current_size + sizeof( char )*realsize + 1 ) );
+    ptr->buff = new_buff;
+    memccpy( &( ptr->buff[ ptr->current_size ] ) , content , 1 , realsize );
+    ptr->current_size += realsize;
+    ptr->buff[ ptr->current_size ] = '\0';
     return realsize;
 }
 
@@ -96,7 +104,7 @@ static puzzle_t get_puzzle_callback( SUDOKU_LEVEL level ) noexcept( false )
 
     std::int8_t re_try = 4;
     long default_timeout = 30L;
-    char * json_buff = nullptr;
+    json_buff_t json_buff = { nullptr , 0 };
     char error_buff[CURL_ERROR_SIZE];
     //c str* safe
     error_buff[0] = '\0';
@@ -135,11 +143,11 @@ static puzzle_t get_puzzle_callback( SUDOKU_LEVEL level ) noexcept( false )
     while ( res != CURLE_OK );
 
     json_error_t error;
-    std::shared_ptr<json_t> root( json_loads( json_buff , 0 , &error ) , json_decref );
+    std::shared_ptr<json_t> root( json_loads( json_buff.buff , 0 , &error ) , json_decref );
     if ( root.get() == nullptr )
     {
         except_message += "network json:'";
-        except_message += json_buff;
+        except_message += json_buff.buff;
         except_message += "' format does not meet expectations";
         throw std::invalid_argument( except_message );
     }
@@ -190,7 +198,7 @@ static puzzle_t get_puzzle_callback( SUDOKU_LEVEL level ) noexcept( false )
         }
     }
 
-    free( json_buff );
+    free( json_buff.buff );
     return result;
 }
 
