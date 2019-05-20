@@ -566,7 +566,7 @@ class SudokuBoard : public Gtk::DrawingArea
 
             //draw puzzle
             this->layout->set_font_description( solutions_font );
-            auto size = this->solutions_font.get_size()/Pango::SCALE;
+            //auto size = this->solutions_font.get_size()/Pango::SCALE;
             for ( cell_t i = 0 ; i < SUDOKU_SIZE ; i++ )
             {
                 for ( cell_t j = 0 ; j < SUDOKU_SIZE ; j++ )
@@ -587,8 +587,10 @@ class SudokuBoard : public Gtk::DrawingArea
                             set_rgba( cairo_context , PUZZLE_NUMBER_RGBA );
                         }
                         this->layout->set_text( std::to_string( number ) );
-                        cairo_context->move_to( this->row_index_size + j*( this->grid_size ) + ( this->grid_size )/2 - size/2
-                                                , this->column_index_size + i*( this->grid_size ) + ( this->grid_size )/2 - size );
+                        int layout_width , layout_height;
+                        this->layout->get_pixel_size( layout_width , layout_height );
+                        cairo_context->move_to( this->row_index_size + j*( this->grid_size ) + ( this->grid_size )/2 - layout_width/2
+                                                , this->column_index_size + i*( this->grid_size ) + ( this->grid_size )/2 - layout_height/2 );
                         this->layout->show_in_cairo_context( cairo_context );
                     }
                 }
@@ -725,11 +727,16 @@ class SudokuBoard : public Gtk::DrawingArea
             cairo_context->set_line_width( this->line_size );
             for( cell_t i = 0 ; i < SUDOKU_SIZE ; i++ )
             {
+                int layout_width , layout_height;
                 this->layout->set_text( row_indexs[i] );
-                cairo_context->move_to( this->row_index_size/2 , this->column_index_size + ( this->grid_size )/2 - ( this->font_size )/2 + i*( ( this->grid_size ) ) );
+                this->layout->get_pixel_size( layout_width , layout_height );
+                cairo_context->move_to( this->row_index_size/2 - layout_width/2 , 
+                    this->column_index_size + ( this->grid_size )/2 - ( this->font_size )/2 + i*( ( this->grid_size ) ) - layout_height/2 );
                 this->layout->show_in_cairo_context( cairo_context );
                 this->layout->set_text( column_indexs[i] );
-                cairo_context->move_to( this->row_index_size + ( this->grid_size )/2 - ( this->font_size )/2 + i*( ( this->grid_size ) ) , this->column_index_size/2 );
+                this->layout->get_pixel_size( layout_width , layout_height );
+                cairo_context->move_to( this->row_index_size + ( this->grid_size )/2 - ( this->font_size )/2 + i*( ( this->grid_size ) ) - layout_width/2 ,
+                    this->column_index_size/2 - layout_height/2 );
                 this->layout->show_in_cairo_context( cairo_context );
             }
             cairo_context->restore();
@@ -774,7 +781,6 @@ class SudokuBoard : public Gtk::DrawingArea
             //draw puzzle
             set_rgba( cairo_context , PUZZLE_NUMBER_RGBA );
             this->layout->set_font_description( solutions_font );
-            auto size = this->solutions_font.get_size()/Pango::SCALE;
             for ( cell_t i = 0 ; i < SUDOKU_SIZE ; i++ )
             {
                 for ( cell_t j = 0 ; j < SUDOKU_SIZE ; j++ )
@@ -783,8 +789,10 @@ class SudokuBoard : public Gtk::DrawingArea
                     if ( number == 0 )
                         continue;
                     this->layout->set_text( std::to_string( number ) );
-                    cairo_context->move_to( this->row_index_size + j*( this->grid_size ) + ( this->grid_size )/2 - size/2
-                                                , this->column_index_size + i*( this->grid_size ) + ( this->grid_size )/2 - size );
+                    int layout_width , layout_height;
+                    this->layout->get_pixel_size( layout_width , layout_height );
+                    cairo_context->move_to( this->row_index_size + j*( this->grid_size ) + ( this->grid_size )/2 - layout_width/2
+                                                , this->column_index_size + i*( this->grid_size ) + ( this->grid_size )/2 - layout_height/2 );
                     this->layout->show_in_cairo_context( cairo_context );
                 }
             }
