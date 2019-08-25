@@ -9,6 +9,7 @@
 #include <future>
 #include <map>
 #include <memory>
+#include <random>
 #include <string>
 #include <thread>
 #include <vector>
@@ -224,10 +225,52 @@ Sudoku::Sudoku( puzzle_t puzzle , SUDOKU_LEVEL level ) noexcept( false )
     this->candidates = generate_candidates( this->puzzle );
 }
 
-Sudoku::Sudoku( SUDOKU_LEVEL level ) noexcept( false ) :
-    Sudoku::Sudoku( get_network_puzzle( level ).get() , level ) 
+//only support 9X9 sudoku
+Sudoku::Sudoku( cell_t clues_number ) noexcept( false )
 {
-    ;
+    if ( clues_number < 17 )
+    {
+        throw std::invalid_argument( "specified clue too small" );
+    }
+    if ( clues_number > 81 )
+    {
+        throw std::invalid_argument( "specified clue too big" );
+    }
+
+    this->autoupdate = false;
+    cell_t range = 81 - 17;
+    cell_t level_range = range/static_cast<cell_t>( SUDOKU_LEVEL::_LEVEL_COUNT );
+    this->level = static_cast<SUDOKU_LEVEL>( clues_number/level_range );
+    this->puzzle = { { 0 } };
+
+    std::random_device rand_div;
+    std::mt19937 rand_gen( rand_div() );
+    std::uniform_int_distribution int_dist( 0 , 8 );
+    cell_t x = int_dist( rand_gen );
+    cell_t y = int_dist( rand_gen );
+    cell_t value = int_dist( rand_gen );
+    this->puzzle[x][y] = value + 1;
+    this->puzzle = this->get_solution( false )[0];
+
+    for( std::size_t clues = 81 ; clues > clues_number ;  )
+    {
+        x = int_dist( rand_gen );
+        y = int_dist( rand_gen );
+        if ( this->puzzle[x][y] == 0 )
+        {
+            continue;
+        }
+        cell_t old_value = this->puzzle[x][y];
+        this->puzzle[x][y] = 0;
+        if ( this->get_solution( true ).size() != 1  )
+        {
+            this->puzzle[x][y] = old_value;
+            continue;
+        }
+        clues--;
+
+    }
+    this->candidates = generate_candidates( this->puzzle );
 }
 
 Sudoku::Sudoku( const Sudoku& sudoku ):
@@ -240,7 +283,7 @@ Sudoku::Sudoku( const Sudoku& sudoku ):
     ;
 }
 
-Sudoku::Sudoku( Sudoku&& sudoku )
+Sudoku::Sudoku( Sudoku&& sudoku ) noexcept( true )
 {
     this->autoupdate = std::move( sudoku.autoupdate );
     this->level = std::move( sudoku.level );
@@ -259,7 +302,7 @@ Sudoku& Sudoku::operator=( const Sudoku& sudoku )
     return *this;
 }
 
-Sudoku& Sudoku::operator=( Sudoku&& sudoku )
+Sudoku& Sudoku::operator=( Sudoku&& sudoku ) noexcept( true )
 {
     if ( this != &sudoku )
     {
@@ -645,16 +688,8 @@ bool fill_check( const puzzle_t& puzzle , std::size_t x , std::size_t y ) noexce
     return true;
 }
 
-bool check_puzzle( const puzzle_t& puzzle ) noexcept( false )
+bool check_puzzle( const puzzle_t& puzzle ) noexcept( true )
 {
-    std::string except_message( __func__ );
-
-    if ( puzzle.empty() )
-    {
-        except_message += ":puzzle is empty";
-        throw std::invalid_argument( except_message );
-    }
-
     std::array< std::map< cell_t , cell_t > , SUDOKU_SIZE > columns_map;
     std::array< std::map< cell_t , cell_t > , SUDOKU_SIZE > row_map;
     std::array< std::map< cell_t , cell_t > , SUDOKU_SIZE > box_map;
@@ -665,10 +700,7 @@ bool check_puzzle( const puzzle_t& puzzle ) noexcept( false )
             int8_t number = puzzle[i][j];
             if ( number < 0 || number > SUDOKU_SIZE )
             {
-                except_message += ":cell:( " + std::to_string( i );
-                except_message += " , " + std::to_string( j ) + " ) value:" + std::to_string( number );
-                except_message += ",out of range [ 0 , " + std::to_string( SUDOKU_SIZE ) + " ]";
-                throw std::out_of_range( except_message );
+                return false;
             }
             cell_t box_index = ( i/SUDOKU_BOX_SIZE )*SUDOKU_BOX_SIZE + j/SUDOKU_BOX_SIZE;
             if ( number == 0 )

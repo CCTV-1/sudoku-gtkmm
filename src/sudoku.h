@@ -9,9 +9,10 @@
 #include <string>
 #include <vector>
 
+#define SUDOKU_SIZE 9
+#define SUDOKU_BOX_SIZE 3
+
 typedef std::uint8_t cell_t;
-static constexpr cell_t SUDOKU_SIZE = 9;
-static constexpr cell_t SUDOKU_BOX_SIZE = 3;
 typedef std::pair<cell_t , cell_t> postion_t;
 typedef std::array< std::array< cell_t , SUDOKU_SIZE > , SUDOKU_SIZE > puzzle_t;
 typedef std::map<postion_t , bool> answer_t;
@@ -30,12 +31,16 @@ class Sudoku
 {
     public:
         Sudoku( puzzle_t puzzle = {} , SUDOKU_LEVEL level = SUDOKU_LEVEL::EASY ) noexcept( false );
-        Sudoku( SUDOKU_LEVEL level ) noexcept( false );
+        #if SUDOKU_SIZE != 9
+            //only implemented limits:9X9 sudoku minimum clue number == 17
+            [[deprecated("not implemented")]]
+        #endif
+        Sudoku( cell_t clues_number ) noexcept( false );
 
         Sudoku( const Sudoku& sudoku );
-        Sudoku( Sudoku&& sudoku );
+        Sudoku( Sudoku&& sudoku ) noexcept( true );
         Sudoku& operator=( const Sudoku& sudoku );
-        Sudoku& operator=( Sudoku&& sudoku );
+        Sudoku& operator=( Sudoku&& sudoku ) noexcept( true );
         ~Sudoku() = default;
 
         void autoupdate_candidate( bool flags ) noexcept( true );
@@ -72,7 +77,7 @@ std::string dump_level( SUDOKU_LEVEL level ) noexcept( false );
 bool fill_check( const puzzle_t& puzzle , std::size_t x , std::size_t y ) noexcept( false );
 
 //not usage solution check
-bool check_puzzle( const puzzle_t& puzzle ) noexcept( false );
+bool check_puzzle( const puzzle_t& puzzle ) noexcept( true );
 
 //9*9 sudoku argument format:"008000402000320780702506000003050004009740200006200000000000500900005600620000190"
 //10+ * 10+:element '01'... or '11'...(if implement)

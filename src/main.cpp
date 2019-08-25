@@ -178,23 +178,29 @@ class SudokuBoard : public Gtk::DrawingArea
                         {
                             Sudoku new_sudoku( puzzle_future.get() , level );
                             this->game = new_sudoku;
-                            this->solution = game.get_solution(false)[0];
-                            this->operator_queues = { {} };
-                            this->operator_iterator = this->operator_queues.begin();
-                            this->select_cell = false;
-                            this->grid_x = 0;
-                            this->grid_y = 0;
-                            this->prev_time = 0;
-                            this->timer.reset();
-                            this->set_game_state( GameState::PLAYING );
-                            this->queue_draw();
                         }
                         catch( const std::exception& e )
                         {
                             g_log( __func__ , G_LOG_LEVEL_MESSAGE , e.what() );
                             //rollback to old game
                             this->set_game_state( SudokuBoard::GameState::PLAYING );
+                            return false;
                         }
+                        auto auto_answer = game.get_solution( false );
+                        if ( auto_answer.empty() )
+                        {
+                            return false;
+                        }
+                        this->solution = auto_answer[0];
+                        this->operator_queues = { {} };
+                        this->operator_iterator = this->operator_queues.begin();
+                        this->select_cell = false;
+                        this->grid_x = 0;
+                        this->grid_y = 0;
+                        this->prev_time = 0;
+                        this->timer.reset();
+                        this->set_game_state( GameState::PLAYING );
+                        this->queue_draw();
 
                         return false;
                     }
@@ -203,6 +209,39 @@ class SudokuBoard : public Gtk::DrawingArea
                 },
                 200
             );
+        }
+
+        void new_game( cell_t clues_number )
+        {
+            try
+            {
+                this->game = Sudoku( clues_number );
+            }
+            catch( const std::exception& e )
+            {
+                g_log( __func__ , G_LOG_LEVEL_MESSAGE , e.what() );
+                //rollback to old game
+                this->set_game_state( SudokuBoard::GameState::PLAYING );
+                return ;
+            }
+            auto auto_answer = game.get_solution( false );
+            if ( auto_answer.empty() )
+            {
+                //back to empty puzzle
+                this->game = Sudoku();
+                auto_answer = game.get_solution( false );
+                return ;
+            }
+            this->solution = auto_answer[0];
+            this->operator_queues = { {} };
+            this->operator_iterator = this->operator_queues.begin();
+            this->select_cell = false;
+            this->grid_x = 0;
+            this->grid_y = 0;
+            this->prev_time = 0;
+            this->timer.reset();
+            this->set_game_state( GameState::PLAYING );
+            this->queue_draw();
         }
 
         void new_game( Glib::ustring puzzle_string )
@@ -920,7 +959,8 @@ int main( void )
 
     SudokuBoard * sudoku_board;
     builder->get_widget_derived( "SudokuBoard" , sudoku_board );
-    sudoku_board->new_game( NEW_GAME_LEVEL );
+    sudoku_board->new_game( static_cast<cell_t>( 25 ) );
+    //sudoku_board->new_game( NEW_GAME_LEVEL );
 
     //bind setting menu buttons signal handler
 
