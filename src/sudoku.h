@@ -30,12 +30,13 @@ enum class SUDOKU_LEVEL:std::uint8_t
 class Sudoku
 {
     public:
-        Sudoku( puzzle_t puzzle = {} , SUDOKU_LEVEL level = SUDOKU_LEVEL::EASY ) noexcept( false );
+        Sudoku( puzzle_t puzzle , SUDOKU_LEVEL level = SUDOKU_LEVEL::EASY ) noexcept( false );
         #if SUDOKU_SIZE != 9
-            //only implemented limits:9X9 sudoku minimum clue number == 17
             [[deprecated("not implemented")]]
         #endif
-        Sudoku( cell_t clues_number ) noexcept( false );
+        //only implemented limits:9X9 sudoku minimum clue number == 17
+        //try generate a puzzle,the clue number is 17
+        Sudoku() noexcept( false );
 
         Sudoku( const Sudoku& sudoku );
         Sudoku( Sudoku&& sudoku ) noexcept( true );

@@ -226,16 +226,9 @@ Sudoku::Sudoku( puzzle_t puzzle , SUDOKU_LEVEL level ) noexcept( false )
 }
 
 //only support 9X9 sudoku
-Sudoku::Sudoku( cell_t clues_number ) noexcept( false )
+Sudoku::Sudoku() noexcept( false )
 {
-    if ( clues_number < 17 )
-    {
-        throw std::invalid_argument( "specified clue too small" );
-    }
-    if ( clues_number > 81 )
-    {
-        throw std::invalid_argument( "specified clue too big" );
-    }
+    constexpr cell_t clues_number = 17;
 
     this->autoupdate = false;
     cell_t range = 81 - 17;
@@ -252,23 +245,57 @@ Sudoku::Sudoku( cell_t clues_number ) noexcept( false )
     this->puzzle[x][y] = value + 1;
     this->puzzle = this->get_solution( false )[0];
 
-    for( std::size_t clues = 81 ; clues > clues_number ;  )
+    //todo if clues > request clues number,but all postion can't remove clues,return 
+    for( std::size_t clues = 81 ; clues > clues_number ; clues-- )
     {
-        x = int_dist( rand_gen );
-        y = int_dist( rand_gen );
-        if ( this->puzzle[x][y] == 0 )
+        //x = int_dist( rand_gen );
+        //y = int_dist( rand_gen );
+        //if ( this->puzzle[x][y] == 0 )
+        //{
+        //    continue;
+        //}
+        //cell_t old_value = this->puzzle[x][y];
+        //this->puzzle[x][y] = 0;
+        //if ( this->get_solution( true ).size() != 1  )
+        //{
+        //    this->puzzle[x][y] = old_value;
+        //    continue;
+        //}
+        //clues--;
+        std::size_t can_remove = 81;
+        std::map<std::uint32_t,bool> fail_map;
+        while ( can_remove != 0 )
         {
-            continue;
+            x = int_dist( rand_gen );
+            y = int_dist( rand_gen );
+            if ( fail_map[x+y*9] == true )
+            {
+                continue;
+            }
+            if ( this->puzzle[x][y] == 0 )
+            {
+                can_remove--;
+                fail_map[x+y*9] = true;
+                continue;
+            }
+            cell_t old_value = this->puzzle[x][y];
+            this->puzzle[x][y] = 0;
+            auto all_solution = this->get_solution( true );
+            if ( all_solution.size() != 1  )
+            {
+                this->puzzle[x][y] = old_value;
+                can_remove--;
+                fail_map[x+y*9] = true;
+                continue;
+            }
+            break;
         }
-        cell_t old_value = this->puzzle[x][y];
-        this->puzzle[x][y] = 0;
-        if ( this->get_solution( true ).size() != 1  )
+        //no clues that can be removed
+        if ( can_remove == 0 )
         {
-            this->puzzle[x][y] = old_value;
-            continue;
+            this->candidates = generate_candidates( this->puzzle );
+            return ;
         }
-        clues--;
-
     }
     this->candidates = generate_candidates( this->puzzle );
 }
@@ -518,7 +545,7 @@ std::vector<puzzle_t> Sudoku::get_solution( bool need_all ) noexcept( false )
             //colum constraint satisfied
             disallow_column[ 2*SUDOKU_SIZE*SUDOKU_SIZE + j*SUDOKU_SIZE + this->puzzle[i][j] - 1 ] = 0;
             //box constraint satisfied
-            disallow_column[ 3*SUDOKU_SIZE*SUDOKU_SIZE + get_box_index( i , j )*SUDOKU_SIZE + this->puzzle[i][j] - 1 ] = 0;;
+            disallow_column[ 3*SUDOKU_SIZE*SUDOKU_SIZE + get_box_index( i , j )*SUDOKU_SIZE + this->puzzle[i][j] - 1 ] = 0;
         }
     }
 

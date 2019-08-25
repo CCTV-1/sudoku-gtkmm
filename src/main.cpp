@@ -163,6 +163,7 @@ class SudokuBoard : public Gtk::DrawingArea
             ;
         }
 
+        //network puzzle
         void new_game( SUDOKU_LEVEL level )
         {
             this->set_game_state( SudokuBoard::GameState::LOADING_NEW_GAME );
@@ -211,11 +212,12 @@ class SudokuBoard : public Gtk::DrawingArea
             );
         }
 
-        void new_game( cell_t clues_number )
+        //local generate puzzle
+        void new_game()
         {
             try
             {
-                this->game = Sudoku( clues_number );
+                this->game = Sudoku();
             }
             catch( const std::exception& e )
             {
@@ -959,7 +961,7 @@ int main( void )
 
     SudokuBoard * sudoku_board;
     builder->get_widget_derived( "SudokuBoard" , sudoku_board );
-    sudoku_board->new_game( static_cast<cell_t>( 25 ) );
+    //sudoku_board->new_game( static_cast<cell_t>( 20 ) );
     //sudoku_board->new_game( NEW_GAME_LEVEL );
 
     //bind setting menu buttons signal handler
