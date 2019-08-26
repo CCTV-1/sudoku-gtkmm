@@ -854,7 +854,10 @@ class ControlButton : public Gtk::EventBox
             this->layout = this->create_pango_layout( label );
             this->layout->set_font_description( this->font_desc );
             std::size_t font_size = font_desc.get_size()/Pango::SCALE;
-            this->set_size_request( font_size*4 , font_size*4 );
+            this->layout->set_text( label );
+            int width = 0 , height = 0;
+            this->layout->get_pixel_size( width , height );
+            this->set_size_request( width + 2*font_size , height + 2*font_size );
             this->set_events( Gdk::EventMask::BUTTON_PRESS_MASK |
                               Gdk::EventMask::LEAVE_NOTIFY_MASK |
                               Gdk::EventMask::ENTER_NOTIFY_MASK
@@ -870,7 +873,10 @@ class ControlButton : public Gtk::EventBox
             this->layout = this->create_pango_layout( label );
             this->layout->set_font_description( this->font_desc );
             std::size_t font_size = font_desc.get_size()/Pango::SCALE;
-            this->set_size_request( font_size*4 , font_size*4 );
+            this->layout->set_text( label );
+            int width = 0 , height = 0;
+            this->layout->get_pixel_size( width , height );
+            this->set_size_request( width + 2*font_size , height + 2*font_size );
             this->set_events( Gdk::EventMask::BUTTON_PRESS_MASK |
                               Gdk::EventMask::LEAVE_NOTIFY_MASK |
                               Gdk::EventMask::ENTER_NOTIFY_MASK
@@ -884,15 +890,18 @@ class ControlButton : public Gtk::EventBox
         void set_label( const Glib::ustring& label )
         {
             this->label = label;
-            this->queue_draw();
+            std::size_t font_size = font_desc.get_size()/Pango::SCALE;
+            this->layout->set_text( label );
+            int width = 0 , height = 0;
+            this->layout->get_pixel_size( width , height );
+            this->set_size_request( width + 2*font_size , height + 2*font_size );
+            this->queue_resize_no_redraw();
         }
 
         void set_font( const Glib::ustring& font_name )
         {
             this->font_desc = Pango::FontDescription( font_name );
             this->layout->set_font_description( this->font_desc );
-            std::size_t font_size = font_desc.get_size()/Pango::SCALE;
-            this->set_size_request( font_size*4 , font_size*4 );
         }
     protected:
         bool on_draw( const Cairo::RefPtr<Cairo::Context> & cairo_context ) override
@@ -961,8 +970,6 @@ int main( void )
 
     SudokuBoard * sudoku_board;
     builder->get_widget_derived( "SudokuBoard" , sudoku_board );
-    //sudoku_board->new_game( static_cast<cell_t>( 20 ) );
-    //sudoku_board->new_game( NEW_GAME_LEVEL );
 
     //bind setting menu buttons signal handler
 
@@ -1107,7 +1114,7 @@ int main( void )
     builder->get_widget( "LevelMenu" , level_menu );
     Gtk::Grid * level_grid;
     builder->get_widget( "LevelGrid" , level_grid );
-    std::array< ControlButton , static_cast<std::size_t>( SUDOKU_LEVEL::_LEVEL_COUNT ) > level_button_arr;
+    std::array< ControlButton , static_cast<std::size_t>( SUDOKU_LEVEL::_LEVEL_COUNT ) + 1 > level_button_arr;
     for( cell_t i = 0 ; i < static_cast<cell_t>( SUDOKU_LEVEL::_LEVEL_COUNT ) ; i++ )
     {
         level_button_arr[i].set_label( dump_level( static_cast<SUDOKU_LEVEL>( i ) ) );
@@ -1127,6 +1134,24 @@ int main( void )
         );
         level_grid->attach( level_button_arr[i] , 0 , i , 1 , 1 );
     }
+
+    int generator_pos = static_cast<int>( SUDOKU_LEVEL::_LEVEL_COUNT );
+    level_button_arr[ generator_pos ].set_font( "Ubuntu Mono 14" );
+    level_button_arr[ generator_pos ].set_label( "Automatic Generate" );
+    level_button_arr[ generator_pos ].signal_button_press_event().connect(
+        [ sudoku_board , level_menu , headbar ]( GdkEventButton * event )
+        {
+            //ignore double-clicked and three-clicked 
+            if ( ( event->type == GdkEventType::GDK_2BUTTON_PRESS ) || ( event->type == GdkEventType::GDK_3BUTTON_PRESS ) )
+                return true;
+
+            level_menu->popdown();
+            headbar->set_title( "Automatic Generate" );
+            sudoku_board->new_game();
+            return true;
+        }
+    );
+    level_grid->attach( level_button_arr[ generator_pos ] , 0 , generator_pos , 1 , 1 );
     level_grid->show_all();
 
     Gtk::Popover * fill_menu;
