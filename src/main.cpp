@@ -1117,8 +1117,8 @@ int main( void )
     std::array< ControlButton , static_cast<std::size_t>( SUDOKU_LEVEL::_LEVEL_COUNT ) + 1 > level_button_arr;
     for( cell_t i = 0 ; i < static_cast<cell_t>( SUDOKU_LEVEL::_LEVEL_COUNT ) ; i++ )
     {
-        level_button_arr[i].set_label( dump_level( static_cast<SUDOKU_LEVEL>( i ) ) );
         level_button_arr[i].set_font( "Ubuntu Mono 14" );
+        level_button_arr[i].set_label( dump_level( static_cast<SUDOKU_LEVEL>( i ) ) );
         level_button_arr[i].signal_button_press_event().connect(
             [ sudoku_board , level_menu , headbar , i ]( GdkEventButton * event )
             {
