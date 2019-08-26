@@ -110,60 +110,60 @@ void DancingLinks::create( std::int32_t R , std::int32_t C , bool * matrix )
     this->destroy();
 
     //overdose alloc,fast.
-    DancingLinksColumn * columns = new DancingLinksColumn[C];
+    this->columns = new DancingLinksColumn[C];
 
-    this->dummy_column->set_right_ptr( &columns[0] );
-    this->dummy_column->set_left_ptr( &columns[C - 1] );
-    columns[0].set_left_ptr( this->dummy_column );
-    columns[C - 1].set_right_ptr( this->dummy_column );
+    this->dummy_column->set_right_ptr( &this->columns[0] );
+    this->dummy_column->set_left_ptr( &this->columns[C - 1] );
+    this->columns[0].set_left_ptr( this->dummy_column );
+    this->columns[C - 1].set_right_ptr( this->dummy_column );
 
     for ( std::int32_t i = 0 ; i < C - 1 ; i++ )
     {
-        columns[i].set_right_ptr( &columns[i + 1] );
-        columns[i + 1].set_left_ptr( &columns[i] );
+        this->columns[i].set_right_ptr( &this->columns[i + 1] );
+        this->columns[i + 1].set_left_ptr( &this->columns[i] );
     }
 
     for ( std::int32_t i = 0 ; i < C ; i++ )
     {
-        columns[i].set_size( R );
-        columns[i].set_essential( i < C );
+        this->columns[i].set_size( R );
+        this->columns[i].set_essential( i < C );
     }
 
     ////overdose alloc,fast.
-    DancingLinksCell * cells = new DancingLinksCell[R * C];
+    this->cells = new DancingLinksCell[R * C];
 
     for ( std::int32_t i = 0, k = 0 ; i < R ; i++ )
     {
         for ( std::int32_t j = 0 ; j < C ; j++, k++ )
         {
-            cells[k].set_row_id( i );
-            cells[k].set_column_ptr( &columns[j] );
+            this->cells[k].set_row_id( i );
+            this->cells[k].set_column_ptr( &this->columns[j] );
 
             if ( k%C == 0 )
-                cells[k].set_left_ptr( &cells[k + C-1] );
+                this->cells[k].set_left_ptr( &this->cells[k + C-1] );
             else
-                cells[k].set_left_ptr( &cells[k-1] );
+                this->cells[k].set_left_ptr( &this->cells[k-1] );
 
             if ( k%C == C-1 )
-                cells[k].set_right_ptr( &cells[k-C+1] );
+                this->cells[k].set_right_ptr( &this->cells[k-C+1] );
             else
-                cells[k].set_right_ptr( &cells[k+1] );
+                this->cells[k].set_right_ptr( &this->cells[k+1] );
 
             if ( k < C )
             {
-                cells[k].set_up_ptr( columns[j].get_dummy_cell() );
-                columns[j].get_dummy_cell()->set_down_ptr( &cells[k] );
+                this->cells[k].set_up_ptr( this->columns[j].get_dummy_cell() );
+                this->columns[j].get_dummy_cell()->set_down_ptr( &this->cells[k] );
             }
             else
-                cells[k].set_up_ptr( &cells[k - C] );
+                this->cells[k].set_up_ptr( &this->cells[k - C] );
 
             if ( k >= ( (R-1)*C ) )
             {
-                cells[k].set_down_ptr( columns[j].get_dummy_cell() );
-                columns[j].get_dummy_cell()->set_up_ptr( &cells[k] );
+                this->cells[k].set_down_ptr( this->columns[j].get_dummy_cell() );
+                this->columns[j].get_dummy_cell()->set_up_ptr( &this->cells[k] );
             }
             else
-                cells[k].set_down_ptr( &cells[k + C] );
+                this->cells[k].set_down_ptr( &this->cells[k + C] );
         }
     }
 
@@ -172,16 +172,13 @@ void DancingLinks::create( std::int32_t R , std::int32_t C , bool * matrix )
         for ( std::int32_t j = 0 ; j < C ; j++ , k++ )
         {
             if ( matrix[k] == false )
-                cells[k].erase();
+                this->cells[k].erase();
         }
     }
 }
 
 void DancingLinks::destroy( void )
 {
-    // Delete memory allocated to the children at the header
-    // Of course, use this only at the header and only after allocation has
-    //  been done. Don't blame me if you screw up
     if ( this->columns != nullptr )
     {
         delete[] this->columns;
