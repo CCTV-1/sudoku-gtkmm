@@ -248,20 +248,6 @@ Sudoku::Sudoku() noexcept( false )
     //todo if clues > request clues number,but all postion can't remove clues,return 
     for( std::size_t clues = 81 ; clues > clues_number ; clues-- )
     {
-        //x = int_dist( rand_gen );
-        //y = int_dist( rand_gen );
-        //if ( this->puzzle[x][y] == 0 )
-        //{
-        //    continue;
-        //}
-        //cell_t old_value = this->puzzle[x][y];
-        //this->puzzle[x][y] = 0;
-        //if ( this->get_solution( true ).size() != 1  )
-        //{
-        //    this->puzzle[x][y] = old_value;
-        //    continue;
-        //}
-        //clues--;
         std::size_t can_remove = 81;
         std::map<std::uint32_t,bool> fail_map;
         while ( can_remove != 0 )
@@ -574,7 +560,7 @@ std::vector<puzzle_t> Sudoku::get_solution( bool need_all ) noexcept( false )
     }
 
     //create store the constraint adjacency matrix
-    std::shared_ptr<bool[]> matrix( new bool[R*C]() );
+    std::shared_ptr<bool[]> matrix( new bool[R*C]() , []( bool * ptr ){ delete[] ptr; } );
     for ( std::size_t i = 0; i < SUDOKU_SIZE; i++)
     {
         for ( std::size_t j = 0; j < SUDOKU_SIZE; j++)
@@ -606,7 +592,7 @@ std::vector<puzzle_t> Sudoku::get_solution( bool need_all ) noexcept( false )
     std::vector<std::int32_t> current_solution;
     N.solve( all_solution , current_solution , need_all );
     std::vector< puzzle_t > results = {};
-    for ( auto solution : all_solution )
+    for ( auto& solution : all_solution )
     {
         puzzle_t result = this->puzzle;
         for ( std::size_t i = 0; i < solution.size() ; i++ )
