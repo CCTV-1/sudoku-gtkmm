@@ -20,48 +20,6 @@
 #include "dancinglinks.h"
 #include "sudoku.h"
 
-/* static std::map< SUDOKU_LEVEL , std::vector<puzzle_t> > builtin_sudoku_array =
-{
-    {
-        SUDOKU_LEVEL::HARD,
-        {
-            {
-                std::array< int8_t , SUDOKU_SIZE >{ 0 , 2 , 7 , 1 , 0 , 0 , 0 , 0 , 8 },
-                std::array< int8_t , SUDOKU_SIZE >{ 0 , 0 , 0 , 0 , 7 , 0 , 0 , 4 , 2 },
-                std::array< int8_t , SUDOKU_SIZE >{ 0 , 8 , 0 , 0 , 0 , 0 , 0 , 9 , 0 },
-                std::array< int8_t , SUDOKU_SIZE >{ 1 , 0 , 0 , 0 , 0 , 0 , 6 , 0 , 0 },
-                std::array< int8_t , SUDOKU_SIZE >{ 5 , 0 , 0 , 0 , 2 , 0 , 0 , 0 , 0 },
-                std::array< int8_t , SUDOKU_SIZE >{ 0 , 0 , 0 , 0 , 8 , 5 , 0 , 0 , 0 },
-                std::array< int8_t , SUDOKU_SIZE >{ 0 , 7 , 1 , 4 , 0 , 0 , 0 , 0 , 0 },
-                std::array< int8_t , SUDOKU_SIZE >{ 0 , 4 , 0 , 2 , 6 , 0 , 0 , 0 , 0 },
-                std::array< int8_t , SUDOKU_SIZE >{ 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 3 }
-            },
-            {
-                std::array< int8_t , SUDOKU_SIZE >{ 5 , 0 , 8 , 0 , 0 , 7 , 9 , 0 , 0 },
-                std::array< int8_t , SUDOKU_SIZE >{ 0 , 4 , 0 , 0 , 0 , 0 , 6 , 0 , 0 },
-                std::array< int8_t , SUDOKU_SIZE >{ 0 , 0 , 0 , 8 , 0 , 3 , 2 , 4 , 0 },
-                std::array< int8_t , SUDOKU_SIZE >{ 6 , 0 , 0 , 0 , 1 , 0 , 0 , 0 , 0 },
-                std::array< int8_t , SUDOKU_SIZE >{ 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2 , 0 },
-                std::array< int8_t , SUDOKU_SIZE >{ 0 , 0 , 9 , 0 , 7 , 0 , 0 , 0 , 0 },
-                std::array< int8_t , SUDOKU_SIZE >{ 0 , 2 , 0 , 0 , 0 , 0 , 0 , 5 , 4 },
-                std::array< int8_t , SUDOKU_SIZE >{ 0 , 5 , 0 , 4 , 0 , 9 , 0 , 0 , 0 },
-                std::array< int8_t , SUDOKU_SIZE >{ 4 , 0 , 0 , 0 , 0 , 0 , 0 , 1 , 0 }
-            },
-            {
-                std::array< int8_t , SUDOKU_SIZE >{ 0 , 0 , 0 , 0 , 4 , 0 , 0 , 2 , 6 },
-                std::array< int8_t , SUDOKU_SIZE >{ 3 , 0 , 9 , 7 , 2 , 0 , 0 , 0 , 0 },
-                std::array< int8_t , SUDOKU_SIZE >{ 0 , 5 , 0 , 0 , 0 , 0 , 4 , 0 , 0 },
-                std::array< int8_t , SUDOKU_SIZE >{ 0 , 0 , 7 , 9 , 1 , 3 , 0 , 0 , 0 },
-                std::array< int8_t , SUDOKU_SIZE >{ 6 , 0 , 3 , 0 , 0 , 0 , 0 , 0 , 0 },
-                std::array< int8_t , SUDOKU_SIZE >{ 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2 },
-                std::array< int8_t , SUDOKU_SIZE >{ 1 , 0 , 0 , 0 , 0 , 0 , 0 , 8 , 0 },
-                std::array< int8_t , SUDOKU_SIZE >{ 0 , 0 , 0 , 0 , 0 , 8 , 0 , 0 , 9 },
-                std::array< int8_t , SUDOKU_SIZE >{ 0 , 9 , 0 , 0 , 0 , 0 , 7 , 0 , 4 }
-            }
-        }
-    }
-}; */
-
 static class LibCurlInit
 {
     public:
@@ -77,6 +35,108 @@ static class LibCurlInit
             curl_global_cleanup();
         }
 }_init_libcurl;
+
+static class LocalPuzzlePool
+{
+public:
+    LocalPuzzlePool()
+    {
+        auto serialization_puzzle = []( const char * file_path , std::vector<std::string>& container_ref )
+        {
+            //level.data:
+            //{
+            //    [
+            //        "006031070437005000010467008029178300000000026300050000805004910003509087790086004",
+            //        ...
+            //    ]
+            //}
+            std::shared_ptr<json_t> root( json_load_file( file_path , 0 , nullptr ) , json_decref );
+            const json_t * rawptr = root.get();
+            if ( ( rawptr != nullptr ) && ( json_is_array( rawptr ) ) )
+            {
+                std::size_t puzzle_size = json_array_size( rawptr );
+                for ( std::size_t i = 0 ; i < puzzle_size ; i++ )
+                {
+                    json_t * puzzle_node = json_array_get( rawptr , i );
+                    if ( json_is_string( puzzle_node ) )
+                    {
+                        container_ref.push_back( json_string_value( puzzle_node ) );
+                    }
+                }
+            }
+        };
+
+        serialization_puzzle( "resource/easy.data" , this->easy_strings );
+        serialization_puzzle( "resource/medium.data" , this->medium_strings );
+        serialization_puzzle( "resource/hard.data" , this->hard_strings );
+        serialization_puzzle( "resource/expert.data" , this->expert_strings );
+    }
+    ~LocalPuzzlePool() = default;
+
+    std::string get_puzzle_string( SUDOKU_LEVEL level ) noexcept( true )
+    {
+        std::string result;
+        std::random_device rand_div;
+        std::mt19937 rand_gen( rand_div() );
+
+        switch ( level )
+        {
+            case SUDOKU_LEVEL::EASY:
+            {
+                if ( this->easy_strings.empty() )
+                {
+                    break;
+                }
+                std::uniform_int_distribution index_dist( 0 , int( this->easy_strings.size() ) );
+                int index = index_dist( rand_gen );
+                result = this->easy_strings[index];
+                break;
+            }
+            case SUDOKU_LEVEL::MEDIUM:
+            {
+                if ( this->medium_strings.empty() )
+                {
+                    break;
+                }
+                std::uniform_int_distribution index_dist( 0 , int( this->medium_strings.size() ) );
+                int index = index_dist( rand_gen );
+                result = this->medium_strings[index];
+                break;
+            }
+            case SUDOKU_LEVEL::HARD:
+            {
+                if ( this->hard_strings.empty() )
+                {
+                    break;
+                }
+                std::uniform_int_distribution index_dist( 0 , int( this->hard_strings.size() ) );
+                int index = index_dist( rand_gen );
+                result = this->hard_strings[index];
+                break;
+            }
+            case SUDOKU_LEVEL::EXPERT:
+            {
+                if ( this->hard_strings.empty() )
+                {
+                    break;
+                }
+                std::uniform_int_distribution index_dist( 0 , int( this->expert_strings.size() ) );
+                int index = index_dist( rand_gen );
+                result = this->expert_strings[index];
+                break;
+            }
+            default:
+                break;
+        }
+
+        return result;
+    }
+private:
+    std::vector<std::string> easy_strings;
+    std::vector<std::string> expert_strings;
+    std::vector<std::string> hard_strings;
+    std::vector<std::string> medium_strings;
+}local_puzzles;
 
 typedef struct JsonBuff
 {
@@ -101,7 +161,7 @@ static puzzle_t get_puzzle_callback( SUDOKU_LEVEL level ) noexcept( false )
     std::string except_message( __func__ );
 
     //API:https://sudoku.com/api/getLevel/$(Level)
-    std::string api_url( "https://sudoku.com/api/getLevel/" + dump_level( level ) );
+    std::string api_url( "https://sudoku.com/api/getLevel/" + level_to_string( level ) );
 
     std::int8_t re_try = 4;
     long default_timeout = 30L;
@@ -190,14 +250,7 @@ static puzzle_t get_puzzle_callback( SUDOKU_LEVEL level ) noexcept( false )
         throw std::length_error( except_message );
     }
     
-    puzzle_t result;
-    for( cell_t i = 0 ; i < SUDOKU_SIZE ; i++ )
-    {
-        for ( cell_t j = 0 ; j < SUDOKU_SIZE ; j++ )
-        {
-            result[i][j] = puzzle_str[ i*SUDOKU_SIZE + j ] - '0';
-        }
-    }
+    puzzle_t result = string_to_puzzle( std::string( puzzle_str ) );
 
     free( json_buff.buff );
     return result;
@@ -225,20 +278,20 @@ Sudoku::Sudoku( puzzle_t puzzle , SUDOKU_LEVEL level ) noexcept( false )
     this->candidates = generate_candidates( this->puzzle );
 }
 
-//only support 9X9 sudoku
+//only support 9X9 sudoku(SUDOKU_SIZE == 9)
 Sudoku::Sudoku() noexcept( false )
 {
     constexpr cell_t clues_number = 17;
 
     this->autoupdate = false;
-    cell_t range = 81 - 17;
+    cell_t range = SUDOKU_SIZE*SUDOKU_SIZE - 17;
     cell_t level_range = range/static_cast<cell_t>( SUDOKU_LEVEL::_LEVEL_COUNT );
     this->level = static_cast<SUDOKU_LEVEL>( clues_number/level_range );
     this->puzzle = { { 0 } };
 
     std::random_device rand_div;
     std::mt19937 rand_gen( rand_div() );
-    std::uniform_int_distribution int_dist( 0 , 8 );
+    std::uniform_int_distribution int_dist( 0 , SUDOKU_SIZE - 1 );
     cell_t x = int_dist( rand_gen );
     cell_t y = int_dist( rand_gen );
     cell_t value = int_dist( rand_gen );
@@ -246,22 +299,22 @@ Sudoku::Sudoku() noexcept( false )
     this->puzzle = this->get_solution( false )[0];
 
     //todo if clues > request clues number,but all postion can't remove clues,return 
-    for( std::size_t clues = 81 ; clues > clues_number ; clues-- )
+    for( std::size_t clues = SUDOKU_SIZE*SUDOKU_SIZE ; clues > clues_number ; clues-- )
     {
-        std::size_t can_remove = 81;
+        std::size_t can_remove = SUDOKU_SIZE*SUDOKU_SIZE;
         std::map<std::uint32_t,bool> fail_map;
         while ( can_remove != 0 )
         {
             x = int_dist( rand_gen );
             y = int_dist( rand_gen );
-            if ( fail_map[x+y*9] == true )
+            if ( fail_map[x+y*SUDOKU_SIZE] == true )
             {
                 continue;
             }
             if ( this->puzzle[x][y] == 0 )
             {
                 can_remove--;
-                fail_map[x+y*9] = true;
+                fail_map[x+y*SUDOKU_SIZE] = true;
                 continue;
             }
             cell_t old_value = this->puzzle[x][y];
@@ -271,7 +324,7 @@ Sudoku::Sudoku() noexcept( false )
             {
                 this->puzzle[x][y] = old_value;
                 can_remove--;
-                fail_map[x+y*9] = true;
+                fail_map[x+y*SUDOKU_SIZE] = true;
                 continue;
             }
             break;
@@ -610,16 +663,8 @@ const puzzle_t& Sudoku::get_puzzle( void ) const noexcept( true )
     return this->puzzle;
 }
 
-std::string dump_level( SUDOKU_LEVEL level ) noexcept( false )
+std::string level_to_string( SUDOKU_LEVEL level ) noexcept( true )
 {
-    std::string except_message( __func__ );
-
-    if ( level >= SUDOKU_LEVEL::_LEVEL_COUNT )
-    {
-        except_message += ":unknown puzzle level";
-        throw std::out_of_range( except_message );
-    }
-
     std::string result;
     switch ( level )
     {
@@ -642,36 +687,26 @@ std::string dump_level( SUDOKU_LEVEL level ) noexcept( false )
     return result;
 }
 
-bool fill_check( const puzzle_t& puzzle , std::size_t x , std::size_t y ) noexcept( false )
+bool fill_check( const puzzle_t& puzzle , std::size_t x , std::size_t y ) noexcept( true )
 {
-    std::string except_message( __func__ );
-
     if ( puzzle.empty() )
     {
-        except_message += ":puzzle is empty";
-        throw std::invalid_argument( except_message );
+        return false;
     }
     //std::size_t is unsigned interger the value >= 0;
     if ( x > SUDOKU_SIZE )
     {
-        except_message += ":argument x value:" + std::to_string( x );
-        except_message += ",out of range [ 0 , " + std::to_string( SUDOKU_SIZE ) + " ]";
-        throw std::out_of_range( except_message );
+        return false;
     }
     //std::size_t is unsigned interger the value >= 0;
     if ( y > SUDOKU_SIZE )
     {
-        except_message += ":argument y value:" + std::to_string( y );
-        except_message += ",out of range [ 0 , " + std::to_string( SUDOKU_SIZE ) + " ]";
-        throw std::out_of_range( except_message );
+        return false;
     }
     //cell_t is unsigned interger the value >= 0;
     if ( puzzle[x][y] > SUDOKU_SIZE )
     {
-        except_message += ":cell:( " + std::to_string( x );
-        except_message += " , " + std::to_string( y ) + " ) value:" + std::to_string( puzzle[x][y] );
-        except_message += ",out of range [ 0 , " + std::to_string( SUDOKU_SIZE ) + " ]";
-        throw std::out_of_range( except_message );
+        return false;
     }
 
     std::map<cell_t , cell_t> columns_map;
@@ -730,16 +765,13 @@ bool check_puzzle( const puzzle_t& puzzle ) noexcept( true )
     return true;
 }
 
-std::string dump_puzzle( const puzzle_t& puzzle ) noexcept( false )
+std::string puzzle_to_string( const puzzle_t& puzzle ) noexcept( true )
 {
-    std::string result;
-    std::string except_message( __func__ );
-    
     if ( check_puzzle( puzzle ) == false )
     {
-        except_message += "illegal puzzle,can't dump to string";
-        throw std::invalid_argument( except_message );
+        return "failure puzzle can not convert to string";
     }
+    std::string result;
     for( cell_t i = 0 ; i < SUDOKU_SIZE ; i++ )
     {
         for ( cell_t j = 0 ; j < SUDOKU_SIZE ; j++ )
@@ -752,13 +784,12 @@ std::string dump_puzzle( const puzzle_t& puzzle ) noexcept( false )
     return result;
 }
 
-puzzle_t serialization_puzzle( std::string puzzle_string ) noexcept( false )
+puzzle_t string_to_puzzle( std::string puzzle_string ) noexcept( true )
 {
-    std::string except_message( __func__ );
     puzzle_t puzzle = {};
     if ( puzzle_string.size() != SUDOKU_SIZE*SUDOKU_SIZE )
     {
-        throw std::invalid_argument( except_message + " argument content:'" + puzzle_string + "' format invalid" );
+        return puzzle_t();
     }
     for( cell_t i = 0 ; i < SUDOKU_SIZE ; i++ )
     {
@@ -780,7 +811,12 @@ std::shared_future <puzzle_t> get_network_puzzle( SUDOKU_LEVEL level ) noexcept(
     return puzzle_future;
 }
 
-std::string dump_candidates( const candidate_t& candidates ) noexcept( true )
+puzzle_t get_local_puzzle( SUDOKU_LEVEL level ) noexcept( true )
+{
+    return string_to_puzzle( local_puzzles.get_puzzle_string( level ) );
+}
+
+std::string candidates_to_string( const candidate_t& candidates ) noexcept( true )
 {
     std::string result;
     for ( cell_t i = 0 ; i < SUDOKU_SIZE * ( SUDOKU_BOX_SIZE*2 + 1 ) ; i++ )
@@ -829,30 +865,22 @@ std::string dump_candidates( const candidate_t& candidates ) noexcept( true )
 }
 
 //modify puzzle (x,y) to value update candidate map 
-void update_candidates( candidate_t& candidates , const puzzle_t& puzzle , std::size_t x , std::size_t y ) noexcept( false )
+void update_candidates( candidate_t& candidates , const puzzle_t& puzzle , std::size_t x , std::size_t y ) noexcept( true )
 {
-    std::string except_message( __func__ );
-
     if ( check_puzzle( puzzle ) == false )
     {
-        except_message += "puzzle illegal";
-        throw std::invalid_argument( except_message );
+        return ;
     }
     //std::size_t is unsigned interger the value >= 0;
     if ( x > SUDOKU_SIZE )
     {
-        except_message += ":argument x value:" + std::to_string( x );
-        except_message += ",out of range [ 0 , " + std::to_string( SUDOKU_SIZE ) + " ]";
-        throw std::out_of_range( except_message );
+        return ;
     }
     //std::size_t is unsigned interger the value >= 0;
     if ( y > SUDOKU_SIZE )
     {
-        except_message += ":argument y value:" + std::to_string( y );
-        except_message += ",out of range [ 0 , " + std::to_string( SUDOKU_SIZE ) + " ]";
-        throw std::out_of_range( except_message );
+        return ;
     }
-
 
     cell_t number = puzzle[x][y];
     auto remove_condidate = [ &number ]( decltype( candidates[0][0] ) condidates ) -> void 
@@ -871,14 +899,11 @@ void update_candidates( candidate_t& candidates , const puzzle_t& puzzle , std::
     }
 }
 
-candidate_t generate_candidates( const puzzle_t& puzzle ) noexcept( false )
+candidate_t generate_candidates( const puzzle_t& puzzle ) noexcept( true )
 {
-    std::string except_message( __func__ );
-
     if ( check_puzzle( puzzle ) == false )
     {
-        except_message += "puzzle illegal";
-        throw std::invalid_argument( except_message );
+        return candidate_t();
     }
     //if SUDOKU_SIZE == 9 : 0 - SUDOKU_SIZE element , 0X(ignore bit)111111111 disallow [1-9]
     std::array< std::uint64_t , SUDOKU_SIZE > disallow_columns;

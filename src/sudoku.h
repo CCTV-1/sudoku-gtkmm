@@ -9,7 +9,14 @@
 #include <string>
 #include <vector>
 
+#ifdef SUDOKU_SIZE
+#undef SUDOKU_SIZE
+#endif
 #define SUDOKU_SIZE 9
+
+#ifdef SUDOKU_BOX_SIZE
+#undef SUDOKU_BOX_SIZE
+#endif
 #define SUDOKU_BOX_SIZE 3
 
 typedef std::uint8_t cell_t;
@@ -73,27 +80,35 @@ class Sudoku
         //std::vector<puzzle_t> solution;
 };
 
-std::string dump_level( SUDOKU_LEVEL level ) noexcept( false );
+std::string level_to_string( SUDOKU_LEVEL level ) noexcept( true );
 
-bool fill_check( const puzzle_t& puzzle , std::size_t x , std::size_t y ) noexcept( false );
+bool fill_check( const puzzle_t& puzzle , std::size_t x , std::size_t y ) noexcept( true );
 
 //not usage solution check
 bool check_puzzle( const puzzle_t& puzzle ) noexcept( true );
 
+#if SUDOKU_SIZE != 9
+    [[deprecated("not implemented")]]
+#endif
 //9*9 sudoku argument format:"008000402000320780702506000003050004009740200006200000000000500900005600620000190"
-//10+ * 10+:element '01'... or '11'...(if implement)
-puzzle_t serialization_puzzle( std::string puzzle_string ) noexcept( false );
+//if can't parse return empty puzzle
+puzzle_t string_to_puzzle( std::string puzzle_string ) noexcept( true );
 
-std::string dump_puzzle( const puzzle_t& puzzle ) noexcept( false );
+std::string puzzle_to_string( const puzzle_t& puzzle ) noexcept( true );
 
-std::shared_future <puzzle_t> get_network_puzzle( enum SUDOKU_LEVEL level ) noexcept( false );
+std::shared_future <puzzle_t> get_network_puzzle( SUDOKU_LEVEL level ) noexcept( false );
 
-std::string dump_candidates( const candidate_t& candidates ) noexcept( true );
+#if SUDOKU_SIZE != 9
+    [[deprecated("not implemented")]]
+#endif
+puzzle_t get_local_puzzle( SUDOKU_LEVEL level ) noexcept( true );
+
+std::string candidates_to_string( const candidate_t& candidates ) noexcept( true );
 
 //modify puzzle (x,y) to value update candidate map
-void update_candidates( candidate_t& candidates , const puzzle_t& puzzle , std::size_t x , std::size_t y ) noexcept( false );
+void update_candidates( candidate_t& candidates , const puzzle_t& puzzle , std::size_t x , std::size_t y ) noexcept( true );
 
-candidate_t generate_candidates( const puzzle_t& puzzle ) noexcept( false );
+candidate_t generate_candidates( const puzzle_t& puzzle ) noexcept( true );
 
 bool operator==( const Sudoku& lhs , const Sudoku& rhs ) noexcept( true );
 

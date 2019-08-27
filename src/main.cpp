@@ -175,18 +175,20 @@ class SudokuBoard : public Gtk::DrawingArea
                     puzzle_status = puzzle_future.wait_for( std::chrono::microseconds( 20 ) );
                     if ( puzzle_status == std::future_status::ready )
                     {
+                        puzzle_t puzzle;
                         try
                         {
-                            Sudoku new_sudoku( puzzle_future.get() , level );
-                            this->game = new_sudoku;
+                            puzzle = puzzle_future.get();
                         }
                         catch( const std::exception& e )
                         {
                             g_log( __func__ , G_LOG_LEVEL_MESSAGE , e.what() );
-                            //rollback to old game
-                            this->set_game_state( SudokuBoard::GameState::PLAYING );
-                            return false;
+                            //back to using local puzzle play game
+                            puzzle = get_local_puzzle( level );
                         }
+                        
+                        Sudoku new_sudoku( puzzle , level );
+                        this->game = new_sudoku;
                         auto auto_answer = game.get_solution( false );
                         if ( auto_answer.empty() )
                         {
@@ -250,7 +252,7 @@ class SudokuBoard : public Gtk::DrawingArea
         {
             try
             {
-                Sudoku new_sudoku( serialization_puzzle( puzzle_string ) );
+                Sudoku new_sudoku( string_to_puzzle( puzzle_string ) );
                 this->game = new_sudoku;
             }
             catch( const std::exception& e )
@@ -463,7 +465,7 @@ class SudokuBoard : public Gtk::DrawingArea
 
         Glib::ustring dump_sudoku( void )
         {
-            return dump_puzzle( this->puzzle );
+            return puzzle_to_string( this->puzzle );
         }
 
         void print_puzzle( Glib::ustring filename = "puzzle.png" ,  PrintType type = PrintType::PNG )
@@ -966,7 +968,7 @@ int main( void )
 
     Gtk::HeaderBar * headbar;
     builder->get_widget( "GameBar" , headbar );
-    headbar->set_title( dump_level( NEW_GAME_LEVEL ) );
+    headbar->set_title( level_to_string( NEW_GAME_LEVEL ) );
 
     SudokuBoard * sudoku_board;
     builder->get_widget_derived( "SudokuBoard" , sudoku_board );
@@ -1118,7 +1120,7 @@ int main( void )
     for( cell_t i = 0 ; i < static_cast<cell_t>( SUDOKU_LEVEL::_LEVEL_COUNT ) ; i++ )
     {
         level_button_arr[i].set_font( "Ubuntu Mono 14" );
-        level_button_arr[i].set_label( dump_level( static_cast<SUDOKU_LEVEL>( i ) ) );
+        level_button_arr[i].set_label( level_to_string( static_cast<SUDOKU_LEVEL>( i ) ) );
         level_button_arr[i].signal_button_press_event().connect(
             [ sudoku_board , level_menu , headbar , i ]( GdkEventButton * event )
             {
@@ -1127,7 +1129,7 @@ int main( void )
                     return true;
 
                 level_menu->popdown();
-                headbar->set_title( dump_level( static_cast<SUDOKU_LEVEL>( i ) ) );
+                headbar->set_title( level_to_string( static_cast<SUDOKU_LEVEL>( i ) ) );
                 sudoku_board->new_game( static_cast<SUDOKU_LEVEL>( i ) );
                 return true;
             }
